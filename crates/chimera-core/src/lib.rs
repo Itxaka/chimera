@@ -1,3 +1,4 @@
+pub mod cloudinit;
 pub mod console;
 pub mod manager;
 pub mod metrics;

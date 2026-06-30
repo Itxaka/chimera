@@ -38,6 +38,8 @@ pub struct VmDefinition {
     pub net: NetConfig,
     pub boot: BootConfig,
     pub created_at: String,
+    #[serde(default)]
+    pub cloud_init: Option<String>,
 }
 
 impl VmDefinition {
@@ -58,7 +60,13 @@ impl VmDefinition {
             net,
             boot,
             created_at: chrono::Utc::now().to_rfc3339(),
+            cloud_init: None,
         }
+    }
+
+    pub fn with_cloud_init(mut self, ud: Option<String>) -> Self {
+        self.cloud_init = ud.filter(|s| !s.trim().is_empty());
+        self
     }
 }
 
@@ -113,5 +121,49 @@ mod tests {
         let t = toml::to_string(&b).unwrap();
         let back: BootConfig = toml::from_str(&t).unwrap();
         assert_eq!(b, back);
+    }
+
+    #[test]
+    fn cloud_init_defaults_none_and_builder_sets() {
+        let d = VmDefinition::new(
+            "v".into(),
+            1,
+            512,
+            vec![DiskConfig {
+                path: std::path::PathBuf::from("/d.raw"),
+                readonly: false,
+            }],
+            NetConfig {
+                bridge: "br0".into(),
+            },
+            BootConfig::Firmware {
+                firmware: std::path::PathBuf::from("/fw.fd"),
+            },
+        );
+        assert_eq!(d.cloud_init, None);
+        let d2 = d.with_cloud_init(Some("#cloud-config\n".into()));
+        assert_eq!(d2.cloud_init.as_deref(), Some("#cloud-config\n"));
+    }
+
+    #[test]
+    fn definition_without_cloud_init_field_deserializes() {
+        // Old TOML with no cloud_init key must still load (serde default).
+        let toml = r#"
+id = "x"
+name = "v"
+vcpus = 1
+memory_mib = 512
+created_at = "2026-06-30T00:00:00+00:00"
+[[disks]]
+path = "/d.raw"
+readonly = false
+[net]
+bridge = "br0"
+[boot]
+kind = "firmware"
+firmware = "/fw.fd"
+"#;
+        let d: VmDefinition = toml::from_str(toml).unwrap();
+        assert_eq!(d.cloud_init, None);
     }
 }

@@ -42,6 +42,7 @@ pub struct CreateDialog {
     disk: adw::EntryRow,
     firmware: adw::EntryRow,
     bridge: adw::EntryRow,
+    cloudinit_buffer: gtk::TextBuffer,
     ch_binary: String,
 }
 
@@ -143,12 +144,36 @@ impl Component for CreateDialog {
         bridge.set_title("Bridge");
         bridge.set_text(&settings.bridge);
 
+        // Advanced (cloud-init) expander row.
+        let cloudinit_view = gtk::TextView::new();
+        cloudinit_view.set_monospace(true);
+        cloudinit_view.set_wrap_mode(gtk::WrapMode::None);
+
+        let cloudinit_scroll = gtk::ScrolledWindow::new();
+        cloudinit_scroll.set_min_content_height(80);
+        cloudinit_scroll.set_has_frame(true);
+        cloudinit_scroll.set_child(Some(&cloudinit_view));
+
+        let cloudinit_buffer = cloudinit_view.buffer();
+
+        let cloudinit_expander = adw::ExpanderRow::new();
+        cloudinit_expander.set_title("Advanced (cloud-init)");
+        cloudinit_expander.add_row(&{
+            // Wrap the ScrolledWindow in a ListBoxRow so ExpanderRow accepts it.
+            let row = gtk::ListBoxRow::new();
+            row.set_child(Some(&cloudinit_scroll));
+            row.set_activatable(false);
+            row.set_selectable(false);
+            row
+        });
+
         group.add(&name);
         group.add(&vcpus);
         group.add(&memory);
         group.add(&disk);
         group.add(&firmware);
         group.add(&bridge);
+        group.add(&cloudinit_expander);
 
         let btn_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         btn_box.set_halign(gtk::Align::End);
@@ -188,6 +213,7 @@ impl Component for CreateDialog {
             disk,
             firmware,
             bridge,
+            cloudinit_buffer,
             ch_binary: settings.ch_binary,
         };
         ComponentParts { model, widgets }
@@ -211,6 +237,11 @@ impl Component for CreateDialog {
                     return;
                 }
 
+                let ud = {
+                    let b = self.cloudinit_buffer.clone();
+                    let (s, e) = (b.start_iter(), b.end_iter());
+                    b.text(&s, &e, false).to_string()
+                };
                 let def = VmDefinition::new(
                     name,
                     vcpus as u8,
@@ -223,7 +254,8 @@ impl Component for CreateDialog {
                     BootConfig::Firmware {
                         firmware: PathBuf::from(firmware),
                     },
-                );
+                )
+                .with_cloud_init(Some(ud));
 
                 // Spawn creation on chimera's runtime; feed result back as
                 // CreateMsg::CreateResult so we can close root on the UI thread.
