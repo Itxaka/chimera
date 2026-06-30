@@ -115,7 +115,10 @@ impl Manager {
                 let seed = self.store.seed_path(&id);
                 crate::cloudinit::write_seed_img(&seed, &id, &def.name, ud)
                     .map_err(crate::store::StoreError::Io)?;
-                boot.disks.push(crate::model::DiskConfig { path: seed, readonly: true });
+                boot.disks.push(crate::model::DiskConfig {
+                    path: seed,
+                    readonly: true,
+                });
             }
         }
         if let Err(e) = async {
@@ -301,7 +304,8 @@ impl Manager {
         let def = self.store.load_definition(id)?;
         if let Some(ud) = def.cloud_init.as_deref() {
             if !ud.trim().is_empty() {
-                let _ = crate::cloudinit::write_seed_img(&self.store.seed_path(id), id, &def.name, ud);
+                let _ =
+                    crate::cloudinit::write_seed_img(&self.store.seed_path(id), id, &def.name, ud);
             }
         }
         let tap = crate::net_client::alloc_tap_name(id);

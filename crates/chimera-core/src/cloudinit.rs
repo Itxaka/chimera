@@ -56,17 +56,27 @@ mod tests {
         let path = tmp.path().join("seed.img");
         write_seed_img(&path, "vm-123", "web1", "#cloud-config\nhostname: web1\n").unwrap();
 
-        let img = std::fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
+        let img = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
         let buf_stream = BufStream::new(img);
         let fs = fatfs::FileSystem::new(buf_stream, fatfs::FsOptions::new()).unwrap();
         let label = fs.volume_label();
         assert_eq!(label.trim(), "CIDATA");
         let root = fs.root_dir();
         let mut s = String::new();
-        root.open_file("user-data").unwrap().read_to_string(&mut s).unwrap();
+        root.open_file("user-data")
+            .unwrap()
+            .read_to_string(&mut s)
+            .unwrap();
         assert!(s.contains("#cloud-config"));
         let mut m = String::new();
-        root.open_file("meta-data").unwrap().read_to_string(&mut m).unwrap();
+        root.open_file("meta-data")
+            .unwrap()
+            .read_to_string(&mut m)
+            .unwrap();
         assert!(m.contains("instance-id: vm-123"));
         assert!(m.contains("local-hostname: web1"));
     }

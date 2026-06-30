@@ -126,10 +126,19 @@ mod tests {
     #[test]
     fn cloud_init_defaults_none_and_builder_sets() {
         let d = VmDefinition::new(
-            "v".into(), 1, 512,
-            vec![DiskConfig { path: std::path::PathBuf::from("/d.raw"), readonly: false }],
-            NetConfig { bridge: "br0".into() },
-            BootConfig::Firmware { firmware: std::path::PathBuf::from("/fw.fd") },
+            "v".into(),
+            1,
+            512,
+            vec![DiskConfig {
+                path: std::path::PathBuf::from("/d.raw"),
+                readonly: false,
+            }],
+            NetConfig {
+                bridge: "br0".into(),
+            },
+            BootConfig::Firmware {
+                firmware: std::path::PathBuf::from("/fw.fd"),
+            },
         );
         assert_eq!(d.cloud_init, None);
         let d2 = d.with_cloud_init(Some("#cloud-config\n".into()));
