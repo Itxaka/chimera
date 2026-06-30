@@ -43,6 +43,8 @@ async fn pause_resume_stop_delete_and_restart() {
     let view2 = mgr.create(stored).await.expect("restart");
     assert_eq!(view2.definition.id, id, "restart must reuse the same id");
     assert_eq!(view2.runtime.status, VmStatus::Running);
+    let pid2 = view2.runtime.pid.expect("restarted VM must have a live pid");
+    assert_ne!(pid2, pid, "restart must produce a new process");
 
     // delete -> store entry removed
     mgr.stop(&id).await.expect("stop before delete");

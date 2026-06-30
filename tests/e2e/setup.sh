@@ -59,8 +59,8 @@ fi
 # Emit env for the test run (owned by the test user).
 cat > "$ENV_OUT" <<EOF
 export CHIMERA_E2E=1
-export CHIMERA_TEST_BRIDGE=$BRIDGE
-export CHIMERA_TEST_FW=$FW
+export CHIMERA_TEST_BRIDGE="$BRIDGE"
+export CHIMERA_TEST_FW="$FW"
 EOF
 chown "$USER_NAME" "$ENV_OUT" 2>/dev/null || true
 

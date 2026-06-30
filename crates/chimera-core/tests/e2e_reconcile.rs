@@ -37,8 +37,8 @@ async fn reconcile_reattaches_running_and_detects_dead() {
     // Kill the process out-of-band, then reconcile again -> Stopped.
     let pid = env.supervisor().read_pid(&id).expect("pidfile present");
     env.supervisor().kill(pid).expect("kill");
-    // give the OS a moment to reap
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // give the OS a moment to reap (generous for loaded CI hosts)
+    tokio::time::sleep(Duration::from_millis(1000)).await;
     mgr2.reconcile_on_launch().await.expect("reconcile after kill");
     assert!(
         wait_for_state(&mgr2, &id, VmStatus::Stopped, T).await,

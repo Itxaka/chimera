@@ -130,7 +130,10 @@ impl TestEnv {
 
     /// Record an id so Drop cleans it up.
     pub fn track(&self, id: &str) {
-        self.created.lock().unwrap().push(id.to_string());
+        self.created
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(id.to_string());
     }
 
     pub fn disk(&self, name: &str, size_mib: u64) -> PathBuf {
