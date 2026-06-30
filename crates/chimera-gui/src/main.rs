@@ -85,12 +85,44 @@ fn main() {
                 }
             });
         }
+        Some("uninstall-nethelper") => {
+            std::process::exit(match crate::setup::uninstall_nethelper() {
+                Ok(()) => {
+                    println!("chimera-netd removed.");
+                    0
+                }
+                Err(e) => {
+                    eprintln!("uninstall failed: {e}");
+                    1
+                }
+            });
+        }
+        Some("remove-bridge") => {
+            let name = match args.get(1) {
+                Some(n) if !n.starts_with('-') => n.clone(),
+                _ => {
+                    eprintln!("usage: chimera remove-bridge <name> [--persistent]");
+                    std::process::exit(2);
+                }
+            };
+            let persistent = args.iter().any(|a| a == "--persistent");
+            std::process::exit(match crate::setup::remove_bridge(&name, persistent) {
+                Ok(()) => {
+                    println!("bridge {name} removed.");
+                    0
+                }
+                Err(e) => {
+                    eprintln!("remove-bridge: {e}");
+                    1
+                }
+            });
+        }
         Some("doctor") => {
             println!("{}", crate::setup::doctor().render());
             std::process::exit(0);
         }
         Some("--help" | "-h" | "help") => {
-            println!("chimera — cloud-hypervisor fleet manager\n\nUSAGE:\n  chimera                         launch the GUI\n  chimera install-nethelper       install the privileged network helper (pkexec)\n  chimera setup-bridge <name> [--persistent]   create a bridge\n  chimera doctor                  check prerequisites");
+            println!("chimera — cloud-hypervisor fleet manager\n\nUSAGE:\n  chimera                         launch the GUI\n  chimera install-nethelper       install the privileged network helper (pkexec)\n  chimera uninstall-nethelper     remove the privileged network helper\n  chimera setup-bridge <name> [--persistent]   create a bridge\n  chimera remove-bridge <name> [--persistent]  remove a bridge\n  chimera doctor                  check prerequisites");
             std::process::exit(0);
         }
         Some(other) => {
