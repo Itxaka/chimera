@@ -1,15 +1,23 @@
 use crate::runtime::rt;
+use crate::settings::Settings;
 use crate::vm_row::{VmAction, VmRow, VmRowOut};
 use adw::prelude::*;
 use chimera_core::console::ConsoleHub;
 use chimera_core::manager::{Manager, VmView};
+use chimera_core::net_client::NetClient;
+use chimera_core::store::Store;
 use chimera_core::supervisor::Supervisor;
 use relm4::factory::FactoryVecDeque;
-use relm4::{gtk, Component, ComponentParts, ComponentSender, RelmWidgetExt};
+use relm4::{adw, gtk, Component, ComponentParts, ComponentSender, RelmWidgetExt};
 use std::sync::Arc;
 
-pub fn manager() -> Manager {
-    Manager::with_defaults()
+pub fn make_manager(ch_binary: &str) -> Manager {
+    Manager::new(
+        Store::new(Store::default_root()),
+        Supervisor::new(Supervisor::default_run_dir()),
+        NetClient::new(),
+        ch_binary.to_string(),
+    )
 }
 
 fn serial_path(id: &str) -> std::path::PathBuf {
@@ -23,6 +31,8 @@ pub enum DashboardMsg {
     Act(VmAction, String),
     Open(String),
     NewVm,
+    InstallHelper,
+    InstallResult(Result<(), String>),
 }
 
 #[derive(Debug)]
@@ -35,46 +45,31 @@ pub enum DashboardOut {
 pub struct Dashboard {
     hub: Arc<ConsoleHub>,
     rows: FactoryVecDeque<VmRow>,
+    ch_binary: String,
+    #[allow(dead_code)]
+    poll_secs: u64,
+    banner: adw::Banner,
 }
+
+/// Init payload: the ConsoleHub plus the loaded Settings.
+pub type DashboardInit = (Arc<ConsoleHub>, Settings);
 
 #[relm4::component(pub)]
 impl Component for Dashboard {
-    type Init = Arc<ConsoleHub>;
+    type Init = DashboardInit;
     type Input = DashboardMsg;
     type Output = DashboardOut;
     type CommandOutput = Vec<VmView>;
 
     view! {
-        gtk::ScrolledWindow {
-            gtk::Box {
-                set_orientation: gtk::Orientation::Vertical,
-                set_margin_all: 12,
-                set_spacing: 8,
-                gtk::Box {
-                    set_spacing: 8,
-                    gtk::Label {
-                        set_label: "Virtual machines",
-                        set_hexpand: true,
-                        set_halign: gtk::Align::Start,
-                        add_css_class: "title-2",
-                    },
-                    gtk::Button {
-                        set_label: "New VM",
-                        add_css_class: "suggested-action",
-                        connect_clicked => DashboardMsg::NewVm,
-                    },
-                },
-                #[local_ref]
-                row_box -> gtk::ListBox {
-                    add_css_class: "boxed-list",
-                    set_selection_mode: gtk::SelectionMode::None,
-                },
-            }
+        gtk::Box {
+            set_orientation: gtk::Orientation::Vertical,
+            set_spacing: 0,
         }
     }
 
     fn init(
-        hub: Self::Init,
+        (hub, settings): Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
@@ -85,19 +80,66 @@ impl Component for Dashboard {
                 VmRowOut::Open(id) => DashboardMsg::Open(id),
             });
 
-        let model = Dashboard { hub, rows };
+        let banner = adw::Banner::new("Network helper not installed");
+        banner.set_button_label(Some("Install"));
+        banner.set_revealed(!crate::setup::netd_installed());
+        {
+            let s = sender.clone();
+            banner.connect_button_clicked(move |_| {
+                s.input(DashboardMsg::InstallHelper);
+            });
+        }
+
+        let scrolled = gtk::ScrolledWindow::new();
+        let inner_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        inner_box.set_margin_all(12);
+
+        let header_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let label = gtk::Label::new(Some("Virtual machines"));
+        label.set_hexpand(true);
+        label.set_halign(gtk::Align::Start);
+        label.add_css_class("title-2");
+
+        let new_btn = gtk::Button::with_label("New VM");
+        new_btn.add_css_class("suggested-action");
+        {
+            let s = sender.clone();
+            new_btn.connect_clicked(move |_| s.input(DashboardMsg::NewVm));
+        }
+
+        header_box.append(&label);
+        header_box.append(&new_btn);
+
+        let model = Dashboard {
+            hub,
+            rows,
+            ch_binary: settings.ch_binary.clone(),
+            poll_secs: settings.poll_secs,
+            banner,
+        };
+
         let row_box = model.rows.widget();
+        row_box.add_css_class("boxed-list");
+        row_box.set_selection_mode(gtk::SelectionMode::None);
+
+        inner_box.append(&header_box);
+        inner_box.append(row_box);
+        scrolled.set_child(Some(&inner_box));
+
+        root.append(&model.banner);
+        root.append(&scrolled);
+
         let widgets = view_output!();
 
         // Initial load.
         sender.input(DashboardMsg::Refresh);
 
-        // 3-second polling: run on relm4's tokio runtime so we can use
-        // tokio::time::sleep; sender is Send so this is fine.
+        // Polling loop with configurable interval.
         let s = sender.clone();
+        let poll_secs = settings.poll_secs;
         relm4::spawn(async move {
             loop {
-                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(poll_secs)).await;
                 s.input(DashboardMsg::Refresh);
             }
         });
@@ -108,12 +150,13 @@ impl Component for Dashboard {
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match msg {
             DashboardMsg::Refresh => {
-                // Spawn on chimera's runtime via oneshot_command.
-                // oneshot_command expects a Send future whose Output = CommandOutput.
-                sender.oneshot_command(async {
-                    rt().spawn(async { manager().list().await.unwrap_or_default() })
-                        .await
-                        .unwrap_or_default()
+                let ch_binary = self.ch_binary.clone();
+                sender.oneshot_command(async move {
+                    rt().spawn(
+                        async move { make_manager(&ch_binary).list().await.unwrap_or_default() },
+                    )
+                    .await
+                    .unwrap_or_default()
                 });
             }
             DashboardMsg::Loaded(views) => {
@@ -126,10 +169,11 @@ impl Component for Dashboard {
             DashboardMsg::Act(action, id) => {
                 let s = sender.clone();
                 let hub = self.hub.clone();
+                let ch_binary = self.ch_binary.clone();
                 relm4::spawn(async move {
                     let res = rt()
                         .spawn(async move {
-                            let m = manager();
+                            let m = make_manager(&ch_binary);
                             match action {
                                 VmAction::Start => {
                                     let def = chimera_core::store::Store::new(
@@ -168,9 +212,6 @@ impl Component for Dashboard {
                     match res {
                         Ok((op, vm_id)) => match op {
                             "attach" => {
-                                // Drop any stale session first (e.g. the VM died
-                                // outside stop): attach is a no-op if one exists,
-                                // so a fresh start would otherwise never reconnect.
                                 hub.detach(&vm_id).await;
                                 hub.attach(&vm_id, serial_path(&vm_id)).await;
                             }
@@ -196,6 +237,27 @@ impl Component for Dashboard {
             DashboardMsg::NewVm => {
                 sender.output(DashboardOut::NewVm).ok();
             }
+            DashboardMsg::InstallHelper => {
+                let s = sender.clone();
+                relm4::spawn(async move {
+                    let res = rt()
+                        .spawn(async { crate::setup::install_nethelper() })
+                        .await
+                        .unwrap_or_else(|e| Err(e.to_string()));
+                    s.input(DashboardMsg::InstallResult(res));
+                });
+            }
+            DashboardMsg::InstallResult(res) => match res {
+                Ok(()) => {
+                    self.banner.set_revealed(false);
+                    sender
+                        .output(DashboardOut::Error("Network helper installed".into()))
+                        .ok();
+                }
+                Err(e) => {
+                    sender.output(DashboardOut::Error(e)).ok();
+                }
+            },
         }
     }
 

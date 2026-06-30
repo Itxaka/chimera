@@ -1,6 +1,7 @@
-use crate::dashboard::manager;
+use crate::dashboard::make_manager;
 use crate::helpers::validate_create;
 use crate::runtime::rt;
+use crate::settings::Settings;
 use adw::prelude::*;
 use chimera_core::model::{BootConfig, DiskConfig, NetConfig, VmDefinition};
 use relm4::{adw, gtk, Component, ComponentParts, ComponentSender};
@@ -27,11 +28,12 @@ pub struct CreateDialog {
     disk: adw::EntryRow,
     firmware: adw::EntryRow,
     bridge: adw::EntryRow,
+    ch_binary: String,
 }
 
 #[relm4::component(pub)]
 impl Component for CreateDialog {
-    type Init = ();
+    type Init = Settings;
     type Input = CreateMsg;
     type Output = CreateOut;
     type CommandOutput = ();
@@ -44,7 +46,7 @@ impl Component for CreateDialog {
     }
 
     fn init(
-        _: Self::Init,
+        settings: Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
@@ -61,7 +63,14 @@ impl Component for CreateDialog {
         name.set_title("Name");
 
         let vcpus = adw::SpinRow::new(
-            Some(&gtk::Adjustment::new(2.0, 1.0, 64.0, 1.0, 1.0, 0.0)),
+            Some(&gtk::Adjustment::new(
+                settings.vcpus as f64,
+                1.0,
+                64.0,
+                1.0,
+                1.0,
+                0.0,
+            )),
             1.0,
             0,
         );
@@ -69,7 +78,7 @@ impl Component for CreateDialog {
 
         let memory = adw::SpinRow::new(
             Some(&gtk::Adjustment::new(
-                2048.0,
+                settings.memory_mib as f64,
                 128.0,
                 1_048_576.0,
                 128.0,
@@ -86,11 +95,15 @@ impl Component for CreateDialog {
 
         let firmware = adw::EntryRow::new();
         firmware.set_title("Firmware path");
-        firmware.set_text("/var/cache/chimera-e2e/hypervisor-fw");
+        if !settings.firmware.is_empty() {
+            firmware.set_text(&settings.firmware);
+        } else {
+            firmware.set_text("/var/cache/chimera-e2e/hypervisor-fw");
+        }
 
         let bridge = adw::EntryRow::new();
         bridge.set_title("Bridge");
-        bridge.set_text("chibr0");
+        bridge.set_text(&settings.bridge);
 
         group.add(&name);
         group.add(&vcpus);
@@ -137,6 +150,7 @@ impl Component for CreateDialog {
             disk,
             firmware,
             bridge,
+            ch_binary: settings.ch_binary,
         };
         ComponentParts { model, widgets }
     }
@@ -176,10 +190,11 @@ impl Component for CreateDialog {
                 // Spawn creation on chimera's runtime; feed result back as
                 // CreateMsg::CreateResult so we can close root on the UI thread.
                 let s = sender.clone();
+                let ch_binary = self.ch_binary.clone();
                 relm4::spawn(async move {
                     let res = rt()
                         .spawn(async move {
-                            manager()
+                            make_manager(&ch_binary)
                                 .create(def)
                                 .await
                                 .map(|_| ())
