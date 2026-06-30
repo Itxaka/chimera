@@ -304,8 +304,11 @@ impl Manager {
         let def = self.store.load_definition(id)?;
         if let Some(ud) = def.cloud_init.as_deref() {
             if !ud.trim().is_empty() {
-                let _ =
-                    crate::cloudinit::write_seed_img(&self.store.seed_path(id), id, &def.name, ud);
+                // Regenerate the seed the snapshot's device list references; a
+                // failure here would make vm.restore fail confusingly later, so
+                // abort cleanly before spawning anything.
+                crate::cloudinit::write_seed_img(&self.store.seed_path(id), id, &def.name, ud)
+                    .map_err(crate::store::StoreError::Io)?;
             }
         }
         let tap = crate::net_client::alloc_tap_name(id);
