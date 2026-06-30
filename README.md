@@ -26,7 +26,35 @@
 
 ### Screenshots
 
-Screenshots: run `cargo run -p chimera-gui` (native GTK; recaptured shots pending).
+> **Placeholders — to capture.** Run `cargo run -p chimera-gui`, open each view
+> below, screenshot the window (GNOME: `PrtSc` / Screenshot app — Wayland blocks
+> automated capture), and save it to the named path. They render here once added.
+> Tip: create a couple of VMs first so the dashboard/detail look populated.
+
+| Save as | View to capture |
+|---------|-----------------|
+| `assets/screenshots/dashboard.png` | Main window: the VM list with mixed statuses (running/stopped/failed) + the **⋮** menu button |
+| `assets/screenshots/create.png` | The **New VM** dialog (form filled in) |
+| `assets/screenshots/detail.png` | A VM detail page showing the **CPU%/RSS stats row**, the **Snapshots** group, and the Resize/Add-disk buttons |
+| `assets/screenshots/console.png` | The **Console** page — VTE terminal with live boot output |
+| `assets/screenshots/preferences.png` | The **Preferences** dialog |
+| `assets/screenshots/about.png` | The **About Chimera** dialog (logo + version) |
+
+<p align="center">
+  <img src="assets/screenshots/dashboard.png" alt="Dashboard (placeholder — capture me)" width="800"><br>
+  <em>dashboard.png</em>
+</p>
+<p align="center">
+  <img src="assets/screenshots/detail.png" alt="VM detail with metrics + snapshots (placeholder — capture me)" width="520">
+  <img src="assets/screenshots/console.png" alt="Serial console (placeholder — capture me)" width="520"><br>
+  <em>detail.png · console.png</em>
+</p>
+<p align="center">
+  <img src="assets/screenshots/create.png" alt="Create VM dialog (placeholder — capture me)" width="340">
+  <img src="assets/screenshots/preferences.png" alt="Preferences (placeholder — capture me)" width="340">
+  <img src="assets/screenshots/about.png" alt="About (placeholder — capture me)" width="340"><br>
+  <em>create.png · preferences.png · about.png</em>
+</p>
 
 ## Architecture
 
@@ -138,14 +166,17 @@ and the unit tests on every push and PR; the gated e2e tests are skipped there.
 
 ## Project status
 
-v0.1 is implemented end-to-end (lifecycle, detached VMs, reconnect, tap+bridge
-networking) plus a VM detail page, inline error reporting, an interactive serial
-console, an e2e test framework, and CI. Boot model is firmware/UEFI from a
-bootable disk image.
+Implemented end-to-end: VM lifecycle, detached VMs + reconnect, tap+bridge
+networking, VM detail page, inline error reporting, interactive serial console,
+**live metrics (host CPU%/RSS)**, **snapshots (take/list/restore/delete)**,
+**hotplug (vCPU/memory resize + add-disk)**, self-contained setup
+(`install-nethelper`, `setup-bridge`, embedded helper), app chrome
+(menu/About/Preferences), an e2e test framework, and CI. Boot model is
+firmware/UEFI from a bootable disk image.
 
-**Roadmap:** live metrics (`vm.counters`) · snapshots / restore · device hotplug
-and cpu/mem resize · passt unprivileged networking · cloud-init / templates ·
-multi-host.
+**Roadmap:** device remove + add-net hotplug · persistent bridge polish ·
+passt unprivileged networking · cloud-init / templates · multi-host · live
+migration · packaging (.desktop + icon).
 
 ## License
 
