@@ -1,5 +1,6 @@
 pub mod console;
 pub mod manager;
+pub mod metrics;
 pub mod model;
 pub mod net_client;
 pub mod store;
