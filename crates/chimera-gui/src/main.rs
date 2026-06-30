@@ -22,6 +22,40 @@ use relm4::RelmApp;
 use std::sync::Arc;
 
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        None => {} // fall through to GUI
+        Some("install-nethelper") => {
+            std::process::exit(match crate::setup::install_nethelper() {
+                Ok(()) => { println!("chimera-netd installed."); 0 }
+                Err(e) => { eprintln!("install failed: {e}"); 1 }
+            });
+        }
+        Some("setup-bridge") => {
+            let name = match args.get(1) {
+                Some(n) if !n.starts_with('-') => n.clone(),
+                _ => { eprintln!("usage: chimera setup-bridge <name> [--persistent]"); std::process::exit(2); }
+            };
+            let persistent = args.iter().any(|a| a == "--persistent");
+            std::process::exit(match crate::setup::setup_bridge(&name, persistent) {
+                Ok(()) => { println!("bridge {name} ready."); 0 }
+                Err(e) => { eprintln!("setup-bridge: {e}"); 1 }
+            });
+        }
+        Some("doctor") => {
+            println!("{}", crate::setup::doctor().render());
+            std::process::exit(0);
+        }
+        Some("--help" | "-h" | "help") => {
+            println!("chimera — cloud-hypervisor fleet manager\n\nUSAGE:\n  chimera                         launch the GUI\n  chimera install-nethelper       install the privileged network helper (pkexec)\n  chimera setup-bridge <name> [--persistent]   create a bridge\n  chimera doctor                  check prerequisites");
+            std::process::exit(0);
+        }
+        Some(other) => {
+            eprintln!("unknown command: {other}\nrun `chimera --help`");
+            std::process::exit(2);
+        }
+    }
+
     let hub = Arc::new(ConsoleHub::new(ConsoleHub::default_log_dir()));
 
     // Reconcile detached VMs and attach consoles for any VMs already running.
