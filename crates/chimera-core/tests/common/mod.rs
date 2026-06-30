@@ -140,7 +140,7 @@ impl TestEnv {
 
 impl Drop for TestEnv {
     fn drop(&mut self) {
-        let ids = self.created.lock().unwrap().clone();
+        let ids = self.created.lock().unwrap_or_else(|e| e.into_inner()).clone();
         if ids.is_empty() {
             return;
         }

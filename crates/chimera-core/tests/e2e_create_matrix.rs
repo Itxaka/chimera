@@ -2,9 +2,6 @@ mod common;
 
 use chimera_core::model::VmStatus;
 use common::{e2e_enabled, DefBuilder, TestEnv};
-use std::time::Duration;
-
-const BOOT_TIMEOUT: Duration = Duration::from_secs(30);
 
 // Each variation: create -> reaches Running -> definition persisted with the
 // options -> cleaned up by TestEnv::drop.

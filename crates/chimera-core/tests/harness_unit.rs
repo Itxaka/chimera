@@ -26,6 +26,10 @@ fn def_builder_defaults_and_overrides() {
     assert_eq!(def.memory_mib, 2048);
     assert_eq!(def.disks.len(), 1);
     assert_eq!(def.net.bridge, "br9");
+    assert_eq!(
+        def.boot,
+        chimera_core::model::BootConfig::Firmware { firmware: PathBuf::from("/fw.fd") }
+    );
     assert_eq!(def.id.len(), 36); // uuid hyphenated
 }
 
