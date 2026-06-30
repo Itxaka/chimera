@@ -85,6 +85,10 @@ impl Store {
         self.root.join(id)
     }
 
+    pub fn seed_path(&self, id: &str) -> PathBuf {
+        self.vm_dir(id).join("seed.img")
+    }
+
     pub fn save_definition(&self, def: &VmDefinition) -> Result<(), StoreError> {
         let dir = self.vm_dir(&def.id);
         fs::create_dir_all(&dir)?;

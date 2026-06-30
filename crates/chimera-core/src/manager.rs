@@ -109,8 +109,17 @@ impl Manager {
         let serial_socket = self.supervisor.serial_socket_path(&id);
         let serial_socket = serial_socket.to_string_lossy().into_owned();
         wait_for_ping(&client).await;
+        let mut boot = def.clone();
+        if let Some(ud) = def.cloud_init.as_deref() {
+            if !ud.trim().is_empty() {
+                let seed = self.store.seed_path(&id);
+                crate::cloudinit::write_seed_img(&seed, &id, &def.name, ud)
+                    .map_err(crate::store::StoreError::Io)?;
+                boot.disks.push(crate::model::DiskConfig { path: seed, readonly: true });
+            }
+        }
         if let Err(e) = async {
-            client.create(&def, &tap, &serial_socket).await?;
+            client.create(&boot, &tap, &serial_socket).await?;
             client.boot().await
         }
         .await
@@ -290,6 +299,11 @@ impl Manager {
             }
         }
         let def = self.store.load_definition(id)?;
+        if let Some(ud) = def.cloud_init.as_deref() {
+            if !ud.trim().is_empty() {
+                let _ = crate::cloudinit::write_seed_img(&self.store.seed_path(id), id, &def.name, ud);
+            }
+        }
         let tap = crate::net_client::alloc_tap_name(id);
         let socket = self.supervisor.socket_path(id);
         let source = self.store.snapshot_dir(id, name);
