@@ -111,7 +111,8 @@ pub fn uninstall_argv() -> Vec<String> {
         "pkexec".into(),
         "sh".into(),
         "-c".into(),
-        "rm -f /usr/libexec/chimera-netd /usr/share/polkit-1/actions/org.chimera.netd.policy".into(),
+        "rm -f /usr/libexec/chimera-netd /usr/share/polkit-1/actions/org.chimera.netd.policy"
+            .into(),
     ]
 }
 

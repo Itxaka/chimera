@@ -342,9 +342,7 @@ impl Component for App {
                         let s2 = s.clone();
                         relm4::spawn(async move {
                             let res = rt()
-                                .spawn(async move {
-                                    crate::setup::setup_bridge(&name, persistent)
-                                })
+                                .spawn(async move { crate::setup::setup_bridge(&name, persistent) })
                                 .await
                                 .unwrap_or_else(|e| Err(e.to_string()));
                             s2.input(AppMsg::BridgeResult(res, "Bridge created"));
@@ -353,9 +351,9 @@ impl Component for App {
                         let s2 = s.clone();
                         relm4::spawn(async move {
                             let res = rt()
-                                .spawn(async move {
-                                    crate::setup::remove_bridge(&name, persistent)
-                                })
+                                .spawn(
+                                    async move { crate::setup::remove_bridge(&name, persistent) },
+                                )
                                 .await
                                 .unwrap_or_else(|e| Err(e.to_string()));
                             s2.input(AppMsg::BridgeResult(res, "Bridge removed"));
