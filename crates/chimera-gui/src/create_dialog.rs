@@ -7,6 +7,20 @@ use chimera_core::model::{BootConfig, DiskConfig, NetConfig, VmDefinition};
 use relm4::{adw, gtk, Component, ComponentParts, ComponentSender};
 use std::path::PathBuf;
 
+/// Open a native file-chooser and write the chosen path into `entry`.
+/// The `window` argument is the parent window for the dialog (may be `None`).
+fn pick_into(entry: &adw::EntryRow, window: Option<&gtk::Window>) {
+    let dialog = gtk::FileDialog::builder().title("Select a file").build();
+    let entry = entry.clone();
+    dialog.open(window, gtk::gio::Cancellable::NONE, move |res| {
+        if let Ok(file) = res {
+            if let Some(path) = file.path() {
+                entry.set_text(&path.to_string_lossy());
+            }
+        }
+    });
+}
+
 #[derive(Debug)]
 pub enum CreateMsg {
     Submit,
@@ -93,6 +107,18 @@ impl Component for CreateDialog {
         let disk = adw::EntryRow::new();
         disk.set_title("Disk image path");
 
+        // Browse… button for the disk image field.
+        let disk_browse = gtk::Button::with_label("Browse\u{2026}");
+        disk_browse.set_valign(gtk::Align::Center);
+        {
+            let disk = disk.clone();
+            disk_browse.connect_clicked(move |btn| {
+                let window = btn.root().and_downcast::<gtk::Window>();
+                pick_into(&disk, window.as_ref());
+            });
+        }
+        disk.add_suffix(&disk_browse);
+
         let firmware = adw::EntryRow::new();
         firmware.set_title("Firmware path");
         if !settings.firmware.is_empty() {
@@ -100,6 +126,18 @@ impl Component for CreateDialog {
         } else {
             firmware.set_text("/var/cache/chimera-e2e/hypervisor-fw");
         }
+
+        // Browse… button for the firmware field.
+        let firmware_browse = gtk::Button::with_label("Browse\u{2026}");
+        firmware_browse.set_valign(gtk::Align::Center);
+        {
+            let firmware = firmware.clone();
+            firmware_browse.connect_clicked(move |btn| {
+                let window = btn.root().and_downcast::<gtk::Window>();
+                pick_into(&firmware, window.as_ref());
+            });
+        }
+        firmware.add_suffix(&firmware_browse);
 
         let bridge = adw::EntryRow::new();
         bridge.set_title("Bridge");
