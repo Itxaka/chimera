@@ -43,11 +43,13 @@ fn build_vm_config_maps_builder_options() {
         .disk(PathBuf::from("/disk.raw"), true)
         .firmware(PathBuf::from("/CLOUDHV.fd"))
         .build();
-    let cfg = build_vm_config(&def, "tap42");
+    let cfg = build_vm_config(&def, "tap42", "/run/chimera/y.serial.sock");
     assert_eq!(cfg["cpus"]["boot_vcpus"], 2);
     assert_eq!(cfg["memory"]["size"], 1024u64 * 1024 * 1024);
     assert_eq!(cfg["payload"]["firmware"], "/CLOUDHV.fd");
     assert_eq!(cfg["disks"][0]["path"], "/disk.raw");
     assert_eq!(cfg["disks"][0]["readonly"], true);
     assert_eq!(cfg["net"][0]["tap"], "tap42");
+    assert_eq!(cfg["serial"]["mode"], "Socket");
+    assert_eq!(cfg["serial"]["socket"], "/run/chimera/y.serial.sock");
 }

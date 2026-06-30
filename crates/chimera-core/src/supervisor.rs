@@ -33,6 +33,10 @@ impl Supervisor {
         self.run_dir.join(format!("{id}.sock"))
     }
 
+    pub fn serial_socket_path(&self, id: &str) -> PathBuf {
+        self.run_dir.join(format!("{id}.serial.sock"))
+    }
+
     pub fn pidfile_path(&self, id: &str) -> PathBuf {
         self.run_dir.join(format!("{id}.pid"))
     }

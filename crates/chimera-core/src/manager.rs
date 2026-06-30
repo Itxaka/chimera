@@ -104,9 +104,11 @@ impl Manager {
 
         // 4. wait for socket, then create+boot
         let client = self.client_for(&id);
+        let serial_socket = self.supervisor.serial_socket_path(&id);
+        let serial_socket = serial_socket.to_string_lossy().into_owned();
         wait_for_ping(&client).await;
         if let Err(e) = async {
-            client.create(&def, &tap).await?;
+            client.create(&def, &tap, &serial_socket).await?;
             client.boot().await
         }
         .await

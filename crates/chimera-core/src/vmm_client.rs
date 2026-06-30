@@ -23,7 +23,7 @@ pub struct VmmClient {
     socket: PathBuf,
 }
 
-pub fn build_vm_config(def: &VmDefinition, tap: &str) -> serde_json::Value {
+pub fn build_vm_config(def: &VmDefinition, tap: &str, serial_socket: &str) -> serde_json::Value {
     let crate::model::BootConfig::Firmware { firmware } = &def.boot;
     let disks: Vec<serde_json::Value> = def
         .disks
@@ -36,7 +36,7 @@ pub fn build_vm_config(def: &VmDefinition, tap: &str) -> serde_json::Value {
         "payload": { "firmware": firmware },
         "disks": disks,
         "net": [ { "tap": tap } ],
-        "serial": { "mode": "Null" },
+        "serial": { "mode": "Socket", "socket": serial_socket },
         "console": { "mode": "Off" }
     })
 }
@@ -78,8 +78,13 @@ impl VmmClient {
             .map(|_| ())
     }
 
-    pub async fn create(&self, def: &VmDefinition, tap: &str) -> Result<(), VmmError> {
-        let cfg = build_vm_config(def, tap);
+    pub async fn create(
+        &self,
+        def: &VmDefinition,
+        tap: &str,
+        serial_socket: &str,
+    ) -> Result<(), VmmError> {
+        let cfg = build_vm_config(def, tap, serial_socket);
         let body = Body::from(serde_json::to_vec(&cfg).map_err(|e| VmmError::Http(e.to_string()))?);
         self.send(Method::PUT, "vm.create", body).await.map(|_| ())
     }
@@ -152,7 +157,7 @@ mod tests {
 
     #[test]
     fn vm_config_has_cpus_memory_payload_disk_net() {
-        let cfg = build_vm_config(&def(), "tap5");
+        let cfg = build_vm_config(&def(), "tap5", "/run/chimera/vm.serial.sock");
         assert_eq!(cfg["cpus"]["boot_vcpus"], 4);
         assert_eq!(cfg["cpus"]["max_vcpus"], 4);
         assert_eq!(cfg["memory"]["size"], 4096u64 * 1024 * 1024);
@@ -160,6 +165,8 @@ mod tests {
         assert_eq!(cfg["disks"][0]["path"], "/disk.raw");
         assert_eq!(cfg["disks"][0]["readonly"], false);
         assert_eq!(cfg["net"][0]["tap"], "tap5");
+        assert_eq!(cfg["serial"]["mode"], "Socket");
+        assert_eq!(cfg["serial"]["socket"], "/run/chimera/vm.serial.sock");
     }
 
     // Spins a one-shot hyper server bound to a unix socket, asserts the client
