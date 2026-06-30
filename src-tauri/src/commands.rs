@@ -61,6 +61,9 @@ pub async fn start_vm(id: String, hub: State<'_, Arc<ConsoleHub>>) -> Result<VmV
         .load_definition(&id)
         .map_err(|e| e.to_string())?;
     let view = m.create(def).await.map_err(|e| e.to_string())?;
+    // Drop any stale session (e.g. the VM died without going through stop_vm)
+    // so attach is unconditionally fresh and reconnects to the new socket.
+    hub.detach(&id).await;
     hub.attach(&id, serial_path(&id)).await;
     Ok(view)
 }

@@ -34,7 +34,7 @@
     });
 
     // keystrokes -> guest
-    term.onData((d) => consoleInput(id, Array.from(enc.encode(d))));
+    term.onData((d) => consoleInput(id, Array.from(enc.encode(d))).catch(() => {}));
 
     try { logPath = await consoleLogPath(id); } catch { logPath = ''; }
   });
