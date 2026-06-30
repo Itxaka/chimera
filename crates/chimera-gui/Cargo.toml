@@ -15,3 +15,6 @@ gtk = { package = "gtk4", version = "0.11", features = ["v4_22"] }
 adw = { package = "libadwaita", version = "0.9", features = ["v1_9"] }
 vte = { package = "vte4", version = "0.10" }
 async-channel = "2"
+serde = { workspace = true }
+toml = { workspace = true }
+dirs = "5"
