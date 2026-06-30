@@ -1,0 +1,37 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Chimera logo mark">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#273341"/>
+      <stop offset="1" stop-color="#1b2530"/>
+    </linearGradient>
+    <linearGradient id="lion" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#fcd34d"/>
+    </linearGradient>
+    <linearGradient id="goat" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#0d9488"/>
+      <stop offset="1" stop-color="#2dd4bf"/>
+    </linearGradient>
+    <linearGradient id="snake" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#7c3aed"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+
+  <!-- rounded hexagon badge -->
+  <path d="M128 14 L222 68 L222 188 L128 242 L34 188 L34 68 Z"
+        fill="url(#bg)" stroke="#3b4a5a" stroke-width="4" stroke-linejoin="round"/>
+
+  <!-- three natures: three teardrops fanning up from a shared base (lion / goat / serpent) -->
+  <g transform="translate(128,150)">
+    <!-- left -->
+    <path d="M0 0 C -42 -28 -56 -78 -30 -118 C -10 -86 -6 -44 0 0 Z" fill="url(#snake)" opacity="0.95"/>
+    <!-- right -->
+    <path d="M0 0 C 42 -28 56 -78 30 -118 C 10 -86 6 -44 0 0 Z" fill="url(#goat)" opacity="0.95"/>
+    <!-- center (tallest) -->
+    <path d="M0 4 C -22 -40 -22 -96 0 -134 C 22 -96 22 -40 0 4 Z" fill="url(#lion)"/>
+    <!-- shared base node -->
+    <circle cx="0" cy="6" r="13" fill="#0f1620"/>
+    <circle cx="0" cy="6" r="6" fill="#fcd34d"/>
+  </g>
+</svg>
