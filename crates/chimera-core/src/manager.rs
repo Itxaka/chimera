@@ -244,11 +244,13 @@ impl Manager {
         let client = self.client_for(id);
         let name = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
         let dir = self.store.snapshot_dir(id, &name);
-        std::fs::create_dir_all(&dir).map_err(crate::store::StoreError::Io)?;
+        // Pause first; only create the snapshot dir once we're committed, so a
+        // failed pause never leaves an orphaned empty dir in the snapshot list.
         let was_running = rt.status == VmStatus::Running;
         if was_running {
             client.pause().await?;
         }
+        std::fs::create_dir_all(&dir).map_err(crate::store::StoreError::Io)?;
         let snap = client.snapshot(&dir).await;
         if was_running {
             let _ = client.resume().await;

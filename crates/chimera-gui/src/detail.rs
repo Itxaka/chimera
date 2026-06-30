@@ -54,6 +54,10 @@ pub struct Detail {
     view: Option<VmView>,
     metrics: Option<VmMetrics>,
     snapshots: Vec<String>,
+    /// One shared Manager kept alive for the page's lifetime so the per-VM
+    /// CpuSampler persists between metric polls (a fresh Manager per call would
+    /// reset the sampler and report CPU% as 0.0 forever).
+    manager: std::sync::Arc<chimera_core::manager::Manager>,
     /// Imperative widgets that need to be mutated in update_with_view.
     metrics_label: gtk::Label,
     snap_list: gtk::ListBox,
@@ -195,13 +199,17 @@ impl Component for Detail {
             .unwrap_or(None)
         });
 
+        // One shared Manager for this page (persists the CpuSampler).
+        let manager = std::sync::Arc::new(make_manager("cloud-hypervisor"));
+
         // Fetch metrics once at startup (they'll be fetched again on each Loaded).
         {
             let s = sender.clone();
             let id3 = id.clone();
+            let mgr = manager.clone();
             relm4::spawn(async move {
                 let m = rt()
-                    .spawn(async move { make_manager("cloud-hypervisor").metrics(&id3).await })
+                    .spawn(async move { mgr.metrics(&id3).await })
                     .await
                     .unwrap_or(None);
                 s.input(DetailMsg::Metrics(m));
@@ -228,6 +236,7 @@ impl Component for Detail {
             snapshots: Vec::new(),
             metrics_label,
             snap_list,
+            manager,
         };
         ComponentParts { model, widgets }
     }
@@ -294,9 +303,10 @@ impl Component for Detail {
                 // Refresh metrics and snapshots after a load/refresh.
                 let s = sender.clone();
                 let id = self.id.clone();
+                let mgr = self.manager.clone();
                 relm4::spawn(async move {
                     let m = rt()
-                        .spawn(async move { make_manager("cloud-hypervisor").metrics(&id).await })
+                        .spawn(async move { mgr.metrics(&id).await })
                         .await
                         .unwrap_or(None);
                     s.input(DetailMsg::Metrics(m));
