@@ -106,7 +106,6 @@ pub fn valid_ifname(name: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-#[allow(dead_code)]
 pub fn uninstall_argv() -> Vec<String> {
     vec![
         "pkexec".into(),
@@ -116,12 +115,10 @@ pub fn uninstall_argv() -> Vec<String> {
     ]
 }
 
-#[allow(dead_code)]
 pub fn uninstall_nethelper() -> Result<(), String> {
     run(&uninstall_argv())
 }
 
-#[allow(dead_code)]
 pub fn remove_bridge_runtime_argv(name: &str) -> Vec<String> {
     vec![
         "pkexec".into(),
@@ -131,7 +128,6 @@ pub fn remove_bridge_runtime_argv(name: &str) -> Vec<String> {
     ]
 }
 
-#[allow(dead_code)]
 pub fn remove_bridge(name: &str, persistent: bool) -> Result<(), String> {
     if !valid_ifname(name) {
         return Err("invalid bridge name: use letters, digits, '-' or '_', max 15 chars".into());

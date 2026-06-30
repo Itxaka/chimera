@@ -1,6 +1,6 @@
 use crate::console::Console;
 use crate::create_dialog::{CreateDialog, CreateOut};
-use crate::dashboard::{Dashboard, DashboardOut};
+use crate::dashboard::{Dashboard, DashboardMsg, DashboardOut};
 use crate::detail::{Detail, DetailOut};
 use crate::prefs::{Prefs, PrefsOut};
 use crate::runtime::rt;
@@ -21,8 +21,10 @@ pub enum AppMsg {
     // Menu actions
     ShowAbout,
     ShowPrefs,
-    ShowCreateBridge,
-    BridgeResult(Result<(), String>),
+    ShowManageBridge,
+    BridgeResult(Result<(), String>, &'static str),
+    // Helper toggle result: Ok(()) means op succeeded, carry the new installed state.
+    HelperToggled(Result<(), String>),
     // Settings updated from prefs dialog
     SettingsUpdated(Settings),
 }
@@ -47,6 +49,9 @@ pub struct App {
     // Kept alive so the prefs dialog component runtime stays active while open.
     #[allow(dead_code)]
     prefs: Option<Controller<Prefs>>,
+    /// The first menu section (install-helper + manage-bridge); stored so we
+    /// can rebuild the helper label after install/uninstall.
+    helper_section: gtk::gio::Menu,
 }
 
 /// Build and present the About dialog.
@@ -63,6 +68,25 @@ pub fn show_about(parent: &adw::ApplicationWindow) {
     // startup, so this name resolves to the real mark.
     dlg.set_application_icon("org.chimera.app");
     dlg.present(Some(parent));
+}
+
+/// Return the correct helper menu label based on current install state.
+fn helper_label() -> &'static str {
+    if crate::setup::netd_installed() {
+        "Remove network helper"
+    } else {
+        "Install network helper"
+    }
+}
+
+/// Rebuild the helper-section items to reflect current state.
+fn rebuild_helper_section(section: &gtk::gio::Menu) {
+    // Remove all items and re-append with current label.
+    while section.n_items() > 0 {
+        section.remove(0);
+    }
+    section.append(Some(helper_label()), Some("app.toggle-helper"));
+    section.append(Some("Manage bridge…"), Some("app.manage-bridge"));
 }
 
 #[relm4::component(pub)]
@@ -109,8 +133,8 @@ impl Component for App {
         // ---- Primary menu ----
         let menu = gtk::gio::Menu::new();
         let section1 = gtk::gio::Menu::new();
-        section1.append(Some("Install network helper"), Some("app.install-helper"));
-        section1.append(Some("Create bridge…"), Some("app.create-bridge"));
+        section1.append(Some(helper_label()), Some("app.toggle-helper"));
+        section1.append(Some("Manage bridge…"), Some("app.manage-bridge"));
         menu.append_section(None, &section1);
         let section2 = gtk::gio::Menu::new();
         section2.append(Some("Preferences"), Some("app.prefs"));
@@ -139,32 +163,41 @@ impl Component for App {
         // ---- Register SimpleActions on the GtkApplication ----
         let app = relm4::main_application();
 
-        // install-helper action
+        // toggle-helper action: inspects netd_installed() at call time
         {
             let s = sender.clone();
-            let action = gtk::gio::SimpleAction::new("install-helper", None);
+            let action = gtk::gio::SimpleAction::new("toggle-helper", None);
             action.connect_activate(move |_, _| {
-                s.input(AppMsg::Error("Installing network helper…".into()));
+                let installing = !crate::setup::netd_installed();
                 let s2 = s.clone();
+                let label = if installing {
+                    "Installing network helper…"
+                } else {
+                    "Removing network helper…"
+                };
+                s.input(AppMsg::Error(label.into()));
                 relm4::spawn(async move {
                     let res = rt()
-                        .spawn(async { crate::setup::install_nethelper() })
+                        .spawn(async move {
+                            if installing {
+                                crate::setup::install_nethelper()
+                            } else {
+                                crate::setup::uninstall_nethelper()
+                            }
+                        })
                         .await
                         .unwrap_or_else(|e| Err(e.to_string()));
-                    match res {
-                        Ok(()) => s2.input(AppMsg::Error("Network helper installed".into())),
-                        Err(e) => s2.input(AppMsg::Error(e)),
-                    }
+                    s2.input(AppMsg::HelperToggled(res));
                 });
             });
             app.add_action(&action);
         }
 
-        // create-bridge action
+        // manage-bridge action
         {
             let s = sender.clone();
-            let action = gtk::gio::SimpleAction::new("create-bridge", None);
-            action.connect_activate(move |_, _| s.input(AppMsg::ShowCreateBridge));
+            let action = gtk::gio::SimpleAction::new("manage-bridge", None);
+            action.connect_activate(move |_, _| s.input(AppMsg::ShowManageBridge));
             app.add_action(&action);
         }
 
@@ -194,6 +227,7 @@ impl Component for App {
             detail: None,
             console: None,
             prefs: None,
+            helper_section: section1,
         };
         ComponentParts { model, widgets }
     }
@@ -243,75 +277,96 @@ impl Component for App {
             AppMsg::SettingsUpdated(s) => {
                 self.settings = s;
             }
-            AppMsg::ShowCreateBridge => {
+            AppMsg::HelperToggled(res) => {
+                match &res {
+                    Ok(()) => {
+                        let installed = crate::setup::netd_installed();
+                        // Rebuild the menu entry to reflect the new state.
+                        rebuild_helper_section(&self.helper_section);
+                        // Sync the dashboard banner (revealed when NOT installed).
+                        self.dashboard
+                            .sender()
+                            .send(DashboardMsg::SetBannerRevealed(!installed))
+                            .ok();
+                        let msg = if installed {
+                            "Network helper installed"
+                        } else {
+                            "Network helper removed"
+                        };
+                        self.toasts.add_toast(adw::Toast::new(msg));
+                    }
+                    Err(e) => {
+                        self.toasts.add_toast(adw::Toast::new(e));
+                    }
+                }
+            }
+            AppMsg::ShowManageBridge => {
                 let settings = self.settings.clone();
                 let s = sender.clone();
-                // Build an AlertDialog for bridge creation.
+                // Build an AlertDialog for bridge management (create or remove).
                 let dlg = adw::AlertDialog::new(
-                    Some("Create Bridge"),
-                    Some("Create a network bridge for VM connectivity."),
+                    Some("Manage Bridge"),
+                    Some("Create or remove a network bridge for VM connectivity."),
                 );
                 dlg.add_response("cancel", "Cancel");
                 dlg.add_response("create", "Create");
+                dlg.add_response("remove", "Remove");
                 dlg.set_response_appearance("create", adw::ResponseAppearance::Suggested);
+                dlg.set_response_appearance("remove", adw::ResponseAppearance::Destructive);
                 dlg.set_default_response(Some("create"));
                 dlg.set_close_response("cancel");
 
-                let name_entry = gtk::Entry::new();
-                name_entry.set_placeholder_text(Some("Bridge name"));
-                name_entry.set_text(&settings.bridge);
+                // Use adw::EntryRow and adw::SwitchRow inside a ListBox for a
+                // native-looking preferences-style layout.
+                let list = gtk::ListBox::new();
+                list.add_css_class("boxed-list");
+                list.set_selection_mode(gtk::SelectionMode::None);
 
-                let persistent_switch = gtk::Switch::new();
-                persistent_switch.set_valign(gtk::Align::Center);
+                let name_row = adw::EntryRow::new();
+                name_row.set_title("Bridge name");
+                name_row.set_text(&settings.bridge);
+                list.append(&name_row);
 
-                let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-                row_box.set_margin_top(8);
-                row_box.set_margin_bottom(8);
-                row_box.set_margin_start(8);
-                row_box.set_margin_end(8);
+                let persistent_row = adw::SwitchRow::new();
+                persistent_row.set_title("Persistent");
+                list.append(&persistent_row);
 
-                let name_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
-                let name_lbl = gtk::Label::new(Some("Bridge name"));
-                name_box.append(&name_lbl);
-                name_box.append(&name_entry);
+                dlg.set_extra_child(Some(&list));
 
-                let persist_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
-                let persist_lbl = gtk::Label::new(Some("Make persistent"));
-                persist_box.append(&persist_lbl);
-                persist_box.append(&persistent_switch);
-
-                row_box.set_hexpand(true);
-                let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-                spacer.set_hexpand(true);
-                name_box.set_hexpand(true);
-
-                row_box.append(&name_box);
-                row_box.append(&spacer);
-                row_box.append(&persist_box);
-
-                dlg.set_extra_child(Some(&row_box));
-
-                let name_entry_clone = name_entry.clone();
-                let persistent_switch_clone = persistent_switch.clone();
                 dlg.connect_response(None, move |_, response| {
+                    // Read widget state before entering the async boundary.
+                    let name = name_row.text().to_string();
+                    let persistent = persistent_row.is_active();
+
                     if response == "create" {
-                        let name = name_entry_clone.text().to_string();
-                        let persistent = persistent_switch_clone.is_active();
                         let s2 = s.clone();
                         relm4::spawn(async move {
                             let res = rt()
-                                .spawn(async move { crate::setup::setup_bridge(&name, persistent) })
+                                .spawn(async move {
+                                    crate::setup::setup_bridge(&name, persistent)
+                                })
                                 .await
                                 .unwrap_or_else(|e| Err(e.to_string()));
-                            s2.input(AppMsg::BridgeResult(res));
+                            s2.input(AppMsg::BridgeResult(res, "Bridge created"));
+                        });
+                    } else if response == "remove" {
+                        let s2 = s.clone();
+                        relm4::spawn(async move {
+                            let res = rt()
+                                .spawn(async move {
+                                    crate::setup::remove_bridge(&name, persistent)
+                                })
+                                .await
+                                .unwrap_or_else(|e| Err(e.to_string()));
+                            s2.input(AppMsg::BridgeResult(res, "Bridge removed"));
                         });
                     }
                 });
                 dlg.present(Some(root));
             }
-            AppMsg::BridgeResult(res) => match res {
+            AppMsg::BridgeResult(res, ok_msg) => match res {
                 Ok(()) => {
-                    self.toasts.add_toast(adw::Toast::new("Bridge created"));
+                    self.toasts.add_toast(adw::Toast::new(ok_msg));
                 }
                 Err(e) => {
                     self.toasts.add_toast(adw::Toast::new(&e));
