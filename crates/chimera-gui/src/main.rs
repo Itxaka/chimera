@@ -1,6 +1,7 @@
 mod app;
 mod create_dialog;
 mod dashboard;
+mod detail;
 mod helpers;
 mod runtime;
 mod style;

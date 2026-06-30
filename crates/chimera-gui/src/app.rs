@@ -1,5 +1,6 @@
 use crate::create_dialog::{CreateDialog, CreateOut};
 use crate::dashboard::{Dashboard, DashboardOut};
+use crate::detail::{Detail, DetailOut};
 use adw::prelude::*;
 use relm4::{
     adw, Component, ComponentController, ComponentParts, ComponentSender, Controller,
@@ -8,6 +9,7 @@ use relm4::{
 #[derive(Debug)]
 pub enum AppMsg {
     Open(String),
+    OpenConsole(String),
     NewVm,
     Error(String),
 }
@@ -17,11 +19,13 @@ pub struct App {
     #[allow(dead_code)]
     dashboard: Controller<Dashboard>,
     toasts: adw::ToastOverlay,
-    #[allow(dead_code)]
     nav: adw::NavigationView,
     // Kept alive so the dialog component runtime stays active while open.
     #[allow(dead_code)]
     create: Option<Controller<CreateDialog>>,
+    // Kept alive so the detail component runtime stays active while pushed.
+    #[allow(dead_code)]
+    detail: Option<Controller<Detail>>,
 }
 
 #[relm4::component(pub)]
@@ -74,6 +78,7 @@ impl Component for App {
             toasts,
             nav,
             create: None,
+            detail: None,
         };
         ComponentParts { model, widgets }
     }
@@ -86,7 +91,20 @@ impl Component for App {
     ) {
         match msg {
             AppMsg::Error(e) => self.toasts.add_toast(adw::Toast::new(&e)),
-            AppMsg::Open(_id) => { /* detail page wired in Task 5 */ }
+            AppMsg::Open(id) => {
+                let detail = Detail::builder()
+                    .launch(id.clone())
+                    .forward(sender.input_sender(), |out| match out {
+                        DetailOut::OpenConsole(id) => AppMsg::OpenConsole(id),
+                    });
+                self.nav.push(detail.widget());
+                self.detail = Some(detail);
+            }
+            AppMsg::OpenConsole(_id) => {
+                // Console page wired in Task 6; show a placeholder toast for now.
+                self.toasts
+                    .add_toast(adw::Toast::new("Console coming in next task"));
+            }
             AppMsg::NewVm => {
                 let dlg = CreateDialog::builder()
                     .launch(())
