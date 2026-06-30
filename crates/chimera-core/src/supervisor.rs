@@ -33,6 +33,10 @@ impl Supervisor {
         self.run_dir.join(format!("{id}.sock"))
     }
 
+    pub fn serial_socket_path(&self, id: &str) -> PathBuf {
+        self.run_dir.join(format!("{id}.serial.sock"))
+    }
+
     pub fn pidfile_path(&self, id: &str) -> PathBuf {
         self.run_dir.join(format!("{id}.pid"))
     }
@@ -40,8 +44,10 @@ impl Supervisor {
     pub fn spawn(&self, id: &str, ch_binary: &str) -> Result<u32, SupError> {
         fs::create_dir_all(&self.run_dir)?;
         let sock = self.socket_path(id);
-        // stale socket from a previous run would block bind
+        // stale sockets from a previous run would block bind / let a console
+        // reader connect to a dead path
         let _ = fs::remove_file(&sock);
+        let _ = fs::remove_file(self.serial_socket_path(id));
 
         let mut cmd = Command::new(ch_binary);
         cmd.arg("--api-socket").arg(&sock);
