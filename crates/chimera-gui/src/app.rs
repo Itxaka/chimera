@@ -1,3 +1,4 @@
+use crate::create_dialog::{CreateDialog, CreateOut};
 use crate::dashboard::{Dashboard, DashboardOut};
 use adw::prelude::*;
 use relm4::{
@@ -18,6 +19,9 @@ pub struct App {
     toasts: adw::ToastOverlay,
     #[allow(dead_code)]
     nav: adw::NavigationView,
+    // Kept alive so the dialog component runtime stays active while open.
+    #[allow(dead_code)]
+    create: Option<Controller<CreateDialog>>,
 }
 
 #[relm4::component(pub)]
@@ -69,6 +73,7 @@ impl Component for App {
             dashboard,
             toasts,
             nav,
+            create: None,
         };
         ComponentParts { model, widgets }
     }
@@ -76,13 +81,22 @@ impl Component for App {
     fn update(
         &mut self,
         msg: Self::Input,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
+        sender: ComponentSender<Self>,
+        root: &Self::Root,
     ) {
         match msg {
             AppMsg::Error(e) => self.toasts.add_toast(adw::Toast::new(&e)),
             AppMsg::Open(_id) => { /* detail page wired in Task 5 */ }
-            AppMsg::NewVm => { /* create dialog wired in Task 4 */ }
+            AppMsg::NewVm => {
+                let dlg = CreateDialog::builder()
+                    .launch(())
+                    .forward(sender.input_sender(), |out| match out {
+                        CreateOut::Created => AppMsg::Error("VM created".into()),
+                        CreateOut::Error(e) => AppMsg::Error(e),
+                    });
+                dlg.widget().present(Some(root));
+                self.create = Some(dlg);
+            }
         }
     }
 }
