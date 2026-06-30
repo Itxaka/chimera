@@ -30,19 +30,34 @@ fn main() {
         None => {} // fall through to GUI
         Some("install-nethelper") => {
             std::process::exit(match crate::setup::install_nethelper() {
-                Ok(()) => { println!("chimera-netd installed."); 0 }
-                Err(e) => { eprintln!("install failed: {e}"); 1 }
+                Ok(()) => {
+                    println!("chimera-netd installed.");
+                    0
+                }
+                Err(e) => {
+                    eprintln!("install failed: {e}");
+                    1
+                }
             });
         }
         Some("setup-bridge") => {
             let name = match args.get(1) {
                 Some(n) if !n.starts_with('-') => n.clone(),
-                _ => { eprintln!("usage: chimera setup-bridge <name> [--persistent]"); std::process::exit(2); }
+                _ => {
+                    eprintln!("usage: chimera setup-bridge <name> [--persistent]");
+                    std::process::exit(2);
+                }
             };
             let persistent = args.iter().any(|a| a == "--persistent");
             std::process::exit(match crate::setup::setup_bridge(&name, persistent) {
-                Ok(()) => { println!("bridge {name} ready."); 0 }
-                Err(e) => { eprintln!("setup-bridge: {e}"); 1 }
+                Ok(()) => {
+                    println!("bridge {name} ready.");
+                    0
+                }
+                Err(e) => {
+                    eprintln!("setup-bridge: {e}");
+                    1
+                }
             });
         }
         Some("doctor") => {

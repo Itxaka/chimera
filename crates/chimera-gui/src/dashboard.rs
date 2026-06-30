@@ -152,12 +152,9 @@ impl Component for Dashboard {
             DashboardMsg::Refresh => {
                 let ch_binary = self.ch_binary.clone();
                 sender.oneshot_command(async move {
-                    rt().spawn(async move {
-                        make_manager(&ch_binary)
-                            .list()
-                            .await
-                            .unwrap_or_default()
-                    })
+                    rt().spawn(
+                        async move { make_manager(&ch_binary).list().await.unwrap_or_default() },
+                    )
                     .await
                     .unwrap_or_default()
                 });

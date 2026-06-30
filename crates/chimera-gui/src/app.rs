@@ -7,7 +7,9 @@ use crate::runtime::rt;
 use crate::settings::Settings;
 use adw::prelude::*;
 use chimera_core::console::ConsoleHub;
-use relm4::{adw, gtk, Component, ComponentController, ComponentParts, ComponentSender, Controller};
+use relm4::{
+    adw, gtk, Component, ComponentController, ComponentParts, ComponentSender, Controller,
+};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -224,11 +226,12 @@ impl Component for App {
                 show_about(root);
             }
             AppMsg::ShowPrefs => {
-                let prefs = Prefs::builder()
-                    .launch(self.settings.clone())
-                    .forward(sender.input_sender(), |out| match out {
+                let prefs = Prefs::builder().launch(self.settings.clone()).forward(
+                    sender.input_sender(),
+                    |out| match out {
                         PrefsOut::Saved(s) => AppMsg::SettingsUpdated(s),
-                    });
+                    },
+                );
                 prefs.widget().present(Some(root));
                 self.prefs = Some(prefs);
             }
@@ -292,9 +295,7 @@ impl Component for App {
                         let s2 = s.clone();
                         relm4::spawn(async move {
                             let res = rt()
-                                .spawn(async move {
-                                    crate::setup::setup_bridge(&name, persistent)
-                                })
+                                .spawn(async move { crate::setup::setup_bridge(&name, persistent) })
                                 .await
                                 .unwrap_or_else(|e| Err(e.to_string()));
                             s2.input(AppMsg::BridgeResult(res));

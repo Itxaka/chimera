@@ -27,9 +27,8 @@ pub fn install_argv(netd_tmp: &str, policy_tmp: &str) -> Vec<String> {
 }
 
 pub fn bridge_runtime_argv(name: &str) -> Vec<String> {
-    let script = format!(
-        "ip link add name {name} type bridge 2>/dev/null || true; ip link set {name} up"
-    );
+    let script =
+        format!("ip link add name {name} type bridge 2>/dev/null || true; ip link set {name} up");
     vec!["pkexec".into(), "sh".into(), "-c".into(), script]
 }
 
@@ -149,10 +148,8 @@ pub fn doctor() -> DoctorReport {
         kvm: std::path::Path::new("/dev/kvm").exists(),
         cloud_hypervisor: which("cloud-hypervisor"),
         netd: netd_installed(),
-        policy: std::path::Path::new(
-            "/usr/share/polkit-1/actions/org.chimera.netd.policy",
-        )
-        .exists(),
+        policy: std::path::Path::new("/usr/share/polkit-1/actions/org.chimera.netd.policy")
+            .exists(),
     }
 }
 
