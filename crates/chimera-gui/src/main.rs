@@ -4,6 +4,7 @@ mod create_dialog;
 mod dashboard;
 mod detail;
 mod helpers;
+mod prefs;
 mod runtime;
 mod settings;
 mod setup;
@@ -14,6 +15,8 @@ mod vm_row;
 pub const NETD_BIN: &[u8] = include_bytes!(env!("CHIMERA_NETD_BIN"));
 /// The polkit policy shipped alongside the helper.
 pub const NETD_POLICY: &str = include_str!("../../../packaging/org.chimera.netd.policy");
+/// The app logo, embedded at build time.
+pub const LOGO_PNG: &[u8] = include_bytes!("../../../assets/chimera-logo.png");
 
 use chimera_core::console::ConsoleHub;
 use chimera_core::model::VmStatus;
@@ -56,13 +59,21 @@ fn main() {
         }
     }
 
+    let settings = settings::Settings::load();
+
     let hub = Arc::new(ConsoleHub::new(ConsoleHub::default_log_dir()));
 
     // Reconcile detached VMs and attach consoles for any VMs already running.
     {
         let hub = hub.clone();
+        let ch_binary = settings.ch_binary.clone();
         runtime::block_on(async move {
-            let m = chimera_core::manager::Manager::with_defaults();
+            let m = chimera_core::manager::Manager::new(
+                chimera_core::store::Store::new(chimera_core::store::Store::default_root()),
+                Supervisor::new(Supervisor::default_run_dir()),
+                chimera_core::net_client::NetClient::new(),
+                ch_binary,
+            );
             let _ = m.reconcile_on_launch().await;
             if let Ok(views) = m.list().await {
                 let sup = Supervisor::new(Supervisor::default_run_dir());
@@ -77,7 +88,7 @@ fn main() {
     }
 
     let app = RelmApp::new("org.chimera.app");
-    app.run::<app::App>(hub);
+    app.run::<app::App>((hub, settings));
 }
 
 #[cfg(test)]
@@ -90,5 +101,11 @@ mod embed_tests {
     #[test]
     fn policy_mentions_action() {
         assert!(super::NETD_POLICY.contains("org.chimera.netd.manage"));
+    }
+    #[test]
+    fn logo_is_embedded() {
+        assert!(!super::LOGO_PNG.is_empty(), "logo must be embedded");
+        // PNG magic bytes: \x89PNG
+        assert_eq!(&super::LOGO_PNG[..4], b"\x89PNG", "logo must be a PNG");
     }
 }

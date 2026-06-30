@@ -120,10 +120,13 @@ version = "0.1.0"
 dependencies = [
  "async-channel",
  "chimera-core",
+ "dirs",
  "gtk4",
  "libadwaita",
  "relm4",
+ "serde",
  "tokio",
+ "toml 0.8.23",
  "vte4",
 ]
 

@@ -1,4 +1,4 @@
-use crate::dashboard::manager;
+use crate::dashboard::make_manager;
 use crate::runtime::rt;
 use adw::prelude::*;
 use chimera_core::manager::VmView;
@@ -77,7 +77,7 @@ impl Component for Detail {
         // Send, so oneshot_command can await it without blocking.
         sender.oneshot_command(async move {
             rt().spawn(async move {
-                manager()
+                make_manager("cloud-hypervisor")
                     .list()
                     .await
                     .ok()
