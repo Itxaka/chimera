@@ -207,6 +207,7 @@ impl Component for App {
                         .launch(id.clone())
                         .forward(sender.input_sender(), |out| match out {
                             DetailOut::OpenConsole(id) => AppMsg::OpenConsole(id),
+                            DetailOut::Toast(msg) => AppMsg::Error(msg),
                         });
                 self.nav.push(detail.widget());
                 self.detail = Some(detail);

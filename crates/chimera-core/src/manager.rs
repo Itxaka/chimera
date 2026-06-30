@@ -39,6 +39,7 @@ pub struct Manager {
     supervisor: Supervisor,
     net: NetClient,
     ch_binary: String,
+    samplers: std::sync::Mutex<std::collections::HashMap<String, crate::metrics::CpuSampler>>,
 }
 
 impl Manager {
@@ -48,6 +49,7 @@ impl Manager {
             supervisor,
             net,
             ch_binary,
+            samplers: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -219,6 +221,123 @@ impl Manager {
             let _ = self.refresh_runtime(&id).await;
         }
         Ok(())
+    }
+
+    pub async fn metrics(&self, id: &str) -> Option<crate::metrics::VmMetrics> {
+        let rt = self.store.load_runtime(id).ok()?;
+        let pid = rt.pid?;
+        let mut map = self.samplers.lock().unwrap();
+        map.entry(id.to_string()).or_default().sample(pid)
+    }
+
+    pub fn list_snapshots(&self, id: &str) -> Vec<String> {
+        self.store.list_snapshots(id)
+    }
+
+    pub async fn delete_snapshot(&self, id: &str, name: &str) -> Result<(), ManagerError> {
+        self.store.delete_snapshot(id, name)?;
+        Ok(())
+    }
+
+    pub async fn snapshot(&self, id: &str) -> Result<String, ManagerError> {
+        let mut rt = self.store.load_runtime(id)?;
+        let client = self.client_for(id);
+        let name = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
+        let dir = self.store.snapshot_dir(id, &name);
+        // Pause first; only create the snapshot dir once we're committed, so a
+        // failed pause never leaves an orphaned empty dir in the snapshot list.
+        let was_running = rt.status == VmStatus::Running;
+        if was_running {
+            client.pause().await?;
+        }
+        std::fs::create_dir_all(&dir).map_err(crate::store::StoreError::Io)?;
+        let snap = client.snapshot(&dir).await;
+        if was_running {
+            let _ = client.resume().await;
+        }
+        snap?;
+        rt.last_error = None;
+        let _ = self.store.save_runtime(id, &rt);
+        Ok(name)
+    }
+
+    pub async fn resize(&self, id: &str, vcpus: u8, memory_mib: u64) -> Result<(), ManagerError> {
+        self.client_for(id).resize(vcpus, memory_mib).await?;
+        let mut def = self.store.load_definition(id)?;
+        def.vcpus = vcpus;
+        def.memory_mib = memory_mib;
+        self.store.save_definition(&def)?;
+        Ok(())
+    }
+
+    pub async fn add_disk(
+        &self,
+        id: &str,
+        path: std::path::PathBuf,
+        readonly: bool,
+    ) -> Result<(), ManagerError> {
+        self.client_for(id).add_disk(&path, readonly).await?;
+        let mut def = self.store.load_definition(id)?;
+        def.disks.push(crate::model::DiskConfig { path, readonly });
+        self.store.save_definition(&def)?;
+        Ok(())
+    }
+
+    pub async fn restore(&self, id: &str, name: &str) -> Result<VmView, ManagerError> {
+        if let Ok(rt) = self.store.load_runtime(id) {
+            if matches!(rt.status, VmStatus::Running | VmStatus::Paused) {
+                self.stop(id).await?;
+            }
+        }
+        let def = self.store.load_definition(id)?;
+        let tap = crate::net_client::alloc_tap_name(id);
+        let socket = self.supervisor.socket_path(id);
+        let source = self.store.snapshot_dir(id, name);
+
+        let mut rt = VmRuntime {
+            pid: None,
+            socket: socket.clone(),
+            tap: Some(tap.clone()),
+            status: VmStatus::Creating,
+            last_error: None,
+        };
+        self.store.save_runtime(id, &rt)?;
+        if let Err(e) = self.net.create_tap(&tap, &def.net.bridge) {
+            rt.status = VmStatus::Failed;
+            rt.last_error = Some(format!("tap: {e}"));
+            let _ = self.store.save_runtime(id, &rt);
+            return Err(e.into());
+        }
+        let pid = match self.supervisor.spawn(id, &self.ch_binary) {
+            Ok(p) => p,
+            Err(e) => {
+                let _ = self.net.delete_tap(&tap);
+                rt.status = VmStatus::Failed;
+                rt.last_error = Some(format!("spawn: {e}"));
+                let _ = self.store.save_runtime(id, &rt);
+                return Err(e.into());
+            }
+        };
+        rt.pid = Some(pid);
+        self.store.save_runtime(id, &rt)?;
+        let client = self.client_for(id);
+        wait_for_ping(&client).await;
+        if let Err(e) = client.restore(&source).await {
+            let _ = self.supervisor.kill(pid);
+            let _ = self.net.delete_tap(&tap);
+            rt.pid = None;
+            rt.status = VmStatus::Failed;
+            rt.last_error = Some(format!("restore: {e}"));
+            let _ = self.store.save_runtime(id, &rt);
+            return Err(e.into());
+        }
+        rt.status = VmStatus::Running;
+        rt.last_error = None;
+        self.store.save_runtime(id, &rt)?;
+        Ok(VmView {
+            definition: def,
+            runtime: rt,
+        })
     }
 }
 

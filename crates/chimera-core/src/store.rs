@@ -16,11 +16,17 @@ pub enum StoreError {
 
 pub struct Store {
     root: PathBuf,
+    snapshots: PathBuf,
 }
 
 impl Store {
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        let snapshots = Self::default_snapshots_root();
+        Self { root, snapshots }
+    }
+
+    pub fn with_snapshots(root: PathBuf, snapshots: PathBuf) -> Self {
+        Self { root, snapshots }
     }
 
     pub fn default_root() -> PathBuf {
@@ -28,6 +34,51 @@ impl Store {
             .unwrap_or_else(|| PathBuf::from("."))
             .join("chimera")
             .join("vms")
+    }
+
+    pub fn default_snapshots_root() -> PathBuf {
+        std::env::var_os("XDG_STATE_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join(".local")
+                    .join("state")
+            })
+            .join("chimera")
+            .join("snapshots")
+    }
+
+    pub fn snapshots_root(&self) -> PathBuf {
+        self.snapshots.clone()
+    }
+
+    pub fn snapshot_dir(&self, id: &str, name: &str) -> PathBuf {
+        self.snapshots.join(id).join(name)
+    }
+
+    pub fn list_snapshots(&self, id: &str) -> Vec<String> {
+        let dir = self.snapshots.join(id);
+        let mut out = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            for e in rd.flatten() {
+                if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    if let Some(n) = e.file_name().to_str() {
+                        out.push(n.to_string());
+                    }
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    pub fn delete_snapshot(&self, id: &str, name: &str) -> Result<(), StoreError> {
+        let dir = self.snapshot_dir(id, name);
+        if dir.exists() {
+            std::fs::remove_dir_all(dir)?;
+        }
+        Ok(())
     }
 
     fn vm_dir(&self, id: &str) -> PathBuf {
@@ -171,5 +222,26 @@ mod tests {
             Err(StoreError::NotFound(_))
         ));
         assert!(store.list_ids().unwrap().is_empty());
+    }
+
+    #[test]
+    fn snapshots_list_and_delete_roundtrip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Store::with_snapshots(tmp.path().join("cfg"), tmp.path().join("snaps"));
+        let id = "vm1";
+        std::fs::create_dir_all(store.snapshot_dir(id, "2026-a")).unwrap();
+        std::fs::create_dir_all(store.snapshot_dir(id, "2026-b")).unwrap();
+        let mut got = store.list_snapshots(id);
+        got.sort();
+        assert_eq!(got, vec!["2026-a".to_string(), "2026-b".to_string()]);
+        store.delete_snapshot(id, "2026-a").unwrap();
+        assert_eq!(store.list_snapshots(id), vec!["2026-b".to_string()]);
+    }
+
+    #[test]
+    fn list_snapshots_empty_when_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Store::with_snapshots(tmp.path().join("cfg"), tmp.path().join("snaps"));
+        assert!(store.list_snapshots("nope").is_empty());
     }
 }
