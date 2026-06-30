@@ -15,7 +15,11 @@ async fn reconcile_reattaches_running_and_detects_dead() {
     let env = TestEnv::new();
 
     let disk = env.disk("rec.raw", 64);
-    let def = DefBuilder::new("rec").vcpus(1).memory_mib(512).disk(disk, false).build();
+    let def = DefBuilder::new("rec")
+        .vcpus(1)
+        .memory_mib(512)
+        .disk(disk, false)
+        .build();
     let id = def.id.clone();
     env.track(&id);
 
@@ -39,7 +43,9 @@ async fn reconcile_reattaches_running_and_detects_dead() {
     env.supervisor().kill(pid).expect("kill");
     // give the OS a moment to reap (generous for loaded CI hosts)
     tokio::time::sleep(Duration::from_millis(1000)).await;
-    mgr2.reconcile_on_launch().await.expect("reconcile after kill");
+    mgr2.reconcile_on_launch()
+        .await
+        .expect("reconcile after kill");
     assert!(
         wait_for_state(&mgr2, &id, VmStatus::Stopped, T).await,
         "reconcile did not mark the dead VM Stopped"

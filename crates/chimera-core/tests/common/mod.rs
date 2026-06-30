@@ -83,8 +83,12 @@ impl DefBuilder {
             self.vcpus,
             self.memory_mib,
             self.disks,
-            NetConfig { bridge: self.bridge },
-            BootConfig::Firmware { firmware: self.firmware },
+            NetConfig {
+                bridge: self.bridge,
+            },
+            BootConfig::Firmware {
+                firmware: self.firmware,
+            },
         )
     }
 }
@@ -143,7 +147,11 @@ impl TestEnv {
 
 impl Drop for TestEnv {
     fn drop(&mut self) {
-        let ids = self.created.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let ids = self
+            .created
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         if ids.is_empty() {
             return;
         }
@@ -159,12 +167,7 @@ impl Drop for TestEnv {
 }
 
 /// Poll Manager::list() until `id` reaches `target` status or `timeout` elapses.
-pub async fn wait_for_state(
-    mgr: &Manager,
-    id: &str,
-    target: VmStatus,
-    timeout: Duration,
-) -> bool {
+pub async fn wait_for_state(mgr: &Manager, id: &str, target: VmStatus, timeout: Duration) -> bool {
     let start = Instant::now();
     loop {
         if let Ok(views) = mgr.list().await {
