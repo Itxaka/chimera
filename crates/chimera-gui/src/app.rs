@@ -4,9 +4,7 @@ use crate::dashboard::{Dashboard, DashboardOut};
 use crate::detail::{Detail, DetailOut};
 use adw::prelude::*;
 use chimera_core::console::ConsoleHub;
-use relm4::{
-    adw, Component, ComponentController, ComponentParts, ComponentSender, Controller,
-};
+use relm4::{adw, Component, ComponentController, ComponentParts, ComponentSender, Controller};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -58,13 +56,14 @@ impl Component for App {
         // Load CSS after the display is available (inside startup).
         crate::style::load();
 
-        let dashboard = Dashboard::builder()
-            .launch(hub.clone())
-            .forward(sender.input_sender(), |out| match out {
+        let dashboard = Dashboard::builder().launch(hub.clone()).forward(
+            sender.input_sender(),
+            |out| match out {
                 DashboardOut::Open(id) => AppMsg::Open(id),
                 DashboardOut::NewVm => AppMsg::NewVm,
                 DashboardOut::Error(e) => AppMsg::Error(e),
-            });
+            },
+        );
 
         let widgets = view_output!();
 
@@ -92,37 +91,32 @@ impl Component for App {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        msg: Self::Input,
-        sender: ComponentSender<Self>,
-        root: &Self::Root,
-    ) {
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
         match msg {
             AppMsg::Error(e) => self.toasts.add_toast(adw::Toast::new(&e)),
             AppMsg::Open(id) => {
-                let detail = Detail::builder()
-                    .launch(id.clone())
-                    .forward(sender.input_sender(), |out| match out {
-                        DetailOut::OpenConsole(id) => AppMsg::OpenConsole(id),
-                    });
+                let detail =
+                    Detail::builder()
+                        .launch(id.clone())
+                        .forward(sender.input_sender(), |out| match out {
+                            DetailOut::OpenConsole(id) => AppMsg::OpenConsole(id),
+                        });
                 self.nav.push(detail.widget());
                 self.detail = Some(detail);
             }
             AppMsg::OpenConsole(id) => {
-                let console = Console::builder()
-                    .launch((self.hub.clone(), id))
-                    .detach();
+                let console = Console::builder().launch((self.hub.clone(), id)).detach();
                 self.nav.push(console.widget());
                 self.console = Some(console);
             }
             AppMsg::NewVm => {
-                let dlg = CreateDialog::builder()
-                    .launch(())
-                    .forward(sender.input_sender(), |out| match out {
-                        CreateOut::Created => AppMsg::Error("VM created".into()),
-                        CreateOut::Error(e) => AppMsg::Error(e),
-                    });
+                let dlg =
+                    CreateDialog::builder()
+                        .launch(())
+                        .forward(sender.input_sender(), |out| match out {
+                            CreateOut::Created => AppMsg::Error("VM created".into()),
+                            CreateOut::Error(e) => AppMsg::Error(e),
+                        });
                 dlg.widget().present(Some(root));
                 self.create = Some(dlg);
             }

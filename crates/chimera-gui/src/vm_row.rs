@@ -102,4 +102,3 @@ fn primary_action(s: &VmStatus) -> VmAction {
         _ => VmAction::Start,
     }
 }
-

@@ -43,7 +43,11 @@ impl Component for CreateDialog {
         }
     }
 
-    fn init(_: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(
+        _: Self::Init,
+        root: Self::Root,
+        sender: ComponentSender<Self>,
+    ) -> ComponentParts<Self> {
         let widgets = view_output!();
 
         // Build the adw widget hierarchy imperatively (adw types don't implement
@@ -65,7 +69,12 @@ impl Component for CreateDialog {
 
         let memory = adw::SpinRow::new(
             Some(&gtk::Adjustment::new(
-                2048.0, 128.0, 1_048_576.0, 128.0, 256.0, 0.0,
+                2048.0,
+                128.0,
+                1_048_576.0,
+                128.0,
+                256.0,
+                0.0,
             )),
             1.0,
             0,

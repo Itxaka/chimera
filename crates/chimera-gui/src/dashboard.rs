@@ -105,12 +105,7 @@ impl Component for Dashboard {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        msg: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match msg {
             DashboardMsg::Refresh => {
                 // Spawn on chimera's runtime via oneshot_command.
@@ -142,8 +137,7 @@ impl Component for Dashboard {
                                     )
                                     .load_definition(&id)
                                     .map_err(|e| e.to_string())?;
-                                    let view =
-                                        m.create(def).await.map_err(|e| e.to_string())?;
+                                    let view = m.create(def).await.map_err(|e| e.to_string())?;
                                     Ok(("attach", view.definition.id))
                                 }
                                 VmAction::Stop => m
@@ -172,21 +166,19 @@ impl Component for Dashboard {
                         .unwrap_or_else(|e| Err(e.to_string()));
 
                     match res {
-                        Ok((op, vm_id)) => {
-                            match op {
-                                "attach" => {
-                                    hub.attach(&vm_id, serial_path(&vm_id)).await;
-                                }
-                                "detach" => {
-                                    hub.detach(&vm_id).await;
-                                }
-                                "delete" => {
-                                    hub.detach(&vm_id).await;
-                                    hub.remove_logs(&vm_id).await;
-                                }
-                                _ => {}
+                        Ok((op, vm_id)) => match op {
+                            "attach" => {
+                                hub.attach(&vm_id, serial_path(&vm_id)).await;
                             }
-                        }
+                            "detach" => {
+                                hub.detach(&vm_id).await;
+                            }
+                            "delete" => {
+                                hub.detach(&vm_id).await;
+                                hub.remove_logs(&vm_id).await;
+                            }
+                            _ => {}
+                        },
                         Err(e) => {
                             s.output(DashboardOut::Error(e)).ok();
                         }
