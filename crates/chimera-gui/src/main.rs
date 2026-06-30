@@ -1,4 +1,6 @@
+mod helpers;
 mod runtime;
+mod style;
 
 use adw::prelude::*;
 use gtk::Application;
