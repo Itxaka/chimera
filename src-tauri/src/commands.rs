@@ -1,10 +1,18 @@
+use chimera_core::console::ConsoleHub;
 use chimera_core::manager::{Manager, VmView};
 use chimera_core::model::{BootConfig, DiskConfig, NetConfig, VmDefinition};
+use chimera_core::supervisor::Supervisor;
 use serde::Deserialize;
 use std::path::PathBuf;
+use std::sync::Arc;
+use tauri::State;
 
 fn manager() -> Manager {
     Manager::with_defaults()
+}
+
+fn serial_path(id: &str) -> std::path::PathBuf {
+    Supervisor::new(Supervisor::default_run_dir()).serial_socket_path(id)
 }
 
 #[derive(Debug, Deserialize)]
@@ -23,7 +31,10 @@ pub async fn list_vms() -> Result<Vec<VmView>, String> {
 }
 
 #[tauri::command]
-pub async fn create_vm(req: CreateVmRequest) -> Result<VmView, String> {
+pub async fn create_vm(
+    req: CreateVmRequest,
+    hub: State<'_, Arc<ConsoleHub>>,
+) -> Result<VmView, String> {
     let def = VmDefinition::new(
         req.name,
         req.vcpus,
@@ -37,22 +48,28 @@ pub async fn create_vm(req: CreateVmRequest) -> Result<VmView, String> {
             firmware: PathBuf::from(req.firmware_path),
         },
     );
-    manager().create(def).await.map_err(|e| e.to_string())
+    let view = manager().create(def).await.map_err(|e| e.to_string())?;
+    hub.attach(&view.definition.id, serial_path(&view.definition.id))
+        .await;
+    Ok(view)
 }
 
 #[tauri::command]
-pub async fn start_vm(id: String) -> Result<VmView, String> {
-    // re-boot a stopped VM by re-running create from its stored definition
+pub async fn start_vm(id: String, hub: State<'_, Arc<ConsoleHub>>) -> Result<VmView, String> {
     let m = manager();
     let def = chimera_core::store::Store::new(chimera_core::store::Store::default_root())
         .load_definition(&id)
         .map_err(|e| e.to_string())?;
-    m.create(def).await.map_err(|e| e.to_string())
+    let view = m.create(def).await.map_err(|e| e.to_string())?;
+    hub.attach(&id, serial_path(&id)).await;
+    Ok(view)
 }
 
 #[tauri::command]
-pub async fn stop_vm(id: String) -> Result<(), String> {
-    manager().stop(&id).await.map_err(|e| e.to_string())
+pub async fn stop_vm(id: String, hub: State<'_, Arc<ConsoleHub>>) -> Result<(), String> {
+    manager().stop(&id).await.map_err(|e| e.to_string())?;
+    hub.detach(&id).await;
+    Ok(())
 }
 
 #[tauri::command]
@@ -66,6 +83,9 @@ pub async fn resume_vm(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn delete_vm(id: String) -> Result<(), String> {
-    manager().delete(&id).await.map_err(|e| e.to_string())
+pub async fn delete_vm(id: String, hub: State<'_, Arc<ConsoleHub>>) -> Result<(), String> {
+    manager().delete(&id).await.map_err(|e| e.to_string())?;
+    hub.detach(&id).await;
+    hub.remove_logs(&id).await;
+    Ok(())
 }
