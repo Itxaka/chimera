@@ -56,17 +56,20 @@ Design and implementation notes live in [`docs/superpowers/`](docs/superpowers/)
 - `/dev/kvm` accessible to your user (add yourself to the `kvm` group)
 - `pkexec` (polkit) and `ip` (iproute2)
 - GTK stack: `gtk4`, `libadwaita`, `vte4` (the `-dev` packages to build: `libgtk-4-dev libadwaita-1-dev libvte-2.91-gtk4-dev`)
-- An existing Linux bridge (e.g. `br0`) — Chimera attaches VMs to it; it does not create bridges.
 
-## Install the privileged helper (required for networking)
+## Quick start
+
+Build and set up the app (network helper and bridge) in one go:
 
 ```sh
-cargo build -p chimera-netd --release
-sudo install -m 0755 target/release/chimera-netd /usr/libexec/chimera-netd
-sudo install -m 0644 packaging/org.chimera.netd.policy /usr/share/polkit-1/actions/
+cargo build --release -p chimera-gui
+./target/release/chimera doctor            # check prerequisites
+./target/release/chimera install-nethelper # install the network helper (asks for auth)
+./target/release/chimera setup-bridge chibr0 --persistent
+./target/release/chimera                   # launch the GUI
 ```
 
-The `exec.path` in the policy must match the installed binary path (`/usr/libexec/chimera-netd`).
+All three setup steps are also available from the GUI: **⋮ menu → Install network helper / Create bridge…**, and **Preferences** for defaults.
 
 ## Run (development)
 
@@ -79,6 +82,17 @@ cargo run -p chimera-gui
 ```sh
 cargo build -p chimera-gui --release
 ```
+
+## Manual network helper install (for packagers)
+
+The network helper is embedded in the binary and installed by the `install-nethelper` command, which copies it to `/usr/libexec/chimera-netd` and installs the polkit policy. For packaged distributions, you may install the helper separately:
+
+```sh
+sudo install -m 0755 target/release/chimera-netd /usr/libexec/chimera-netd
+sudo install -m 0644 packaging/org.chimera.netd.policy /usr/share/polkit-1/actions/
+```
+
+The `exec.path` in the policy must match the installed binary path (`/usr/libexec/chimera-netd`).
 
 ## Using the serial console
 
