@@ -41,6 +41,22 @@ pub fn build_vm_config(def: &VmDefinition, tap: &str, serial_socket: &str) -> se
     })
 }
 
+pub fn snapshot_body(dir: &std::path::Path) -> serde_json::Value {
+    serde_json::json!({ "destination_url": format!("file://{}", dir.display()) })
+}
+
+pub fn restore_body(dir: &std::path::Path) -> serde_json::Value {
+    serde_json::json!({ "source_url": format!("file://{}", dir.display()), "prefault": false })
+}
+
+pub fn resize_body(vcpus: u8, memory_mib: u64) -> serde_json::Value {
+    serde_json::json!({ "desired_vcpus": vcpus, "desired_ram": memory_mib * 1024 * 1024 })
+}
+
+pub fn add_disk_body(path: &std::path::Path, readonly: bool) -> serde_json::Value {
+    serde_json::json!({ "path": path, "readonly": readonly })
+}
+
 impl VmmClient {
     pub fn new(socket: PathBuf) -> Self {
         Self { socket }
@@ -129,6 +145,26 @@ impl VmmClient {
         let bytes = self.send(Method::GET, "vm.info", Body::empty()).await?;
         serde_json::from_slice(&bytes).map_err(|e| VmmError::Http(e.to_string()))
     }
+
+    pub async fn snapshot(&self, dest_dir: &std::path::Path) -> Result<(), VmmError> {
+        let body = Body::from(serde_json::to_vec(&snapshot_body(dest_dir)).map_err(|e| VmmError::Http(e.to_string()))?);
+        self.send(Method::PUT, "vm.snapshot", body).await.map(|_| ())
+    }
+
+    pub async fn restore(&self, source_dir: &std::path::Path) -> Result<(), VmmError> {
+        let body = Body::from(serde_json::to_vec(&restore_body(source_dir)).map_err(|e| VmmError::Http(e.to_string()))?);
+        self.send(Method::PUT, "vm.restore", body).await.map(|_| ())
+    }
+
+    pub async fn resize(&self, vcpus: u8, memory_mib: u64) -> Result<(), VmmError> {
+        let body = Body::from(serde_json::to_vec(&resize_body(vcpus, memory_mib)).map_err(|e| VmmError::Http(e.to_string()))?);
+        self.send(Method::PUT, "vm.resize", body).await.map(|_| ())
+    }
+
+    pub async fn add_disk(&self, path: &std::path::Path, readonly: bool) -> Result<(), VmmError> {
+        let body = Body::from(serde_json::to_vec(&add_disk_body(path, readonly)).map_err(|e| VmmError::Http(e.to_string()))?);
+        self.send(Method::PUT, "vm.add-disk", body).await.map(|_| ())
+    }
 }
 
 #[cfg(test)]
@@ -167,6 +203,33 @@ mod tests {
         assert_eq!(cfg["net"][0]["tap"], "tap5");
         assert_eq!(cfg["serial"]["mode"], "Socket");
         assert_eq!(cfg["serial"]["socket"], "/run/chimera/vm.serial.sock");
+    }
+
+    #[test]
+    fn snapshot_body_is_file_url() {
+        let b = snapshot_body(std::path::Path::new("/var/snap/x"));
+        assert_eq!(b["destination_url"], "file:///var/snap/x");
+    }
+
+    #[test]
+    fn restore_body_is_file_url_no_prefault() {
+        let b = restore_body(std::path::Path::new("/var/snap/x"));
+        assert_eq!(b["source_url"], "file:///var/snap/x");
+        assert_eq!(b["prefault"], false);
+    }
+
+    #[test]
+    fn resize_body_has_vcpus_and_ram_bytes() {
+        let b = resize_body(4, 2048);
+        assert_eq!(b["desired_vcpus"], 4);
+        assert_eq!(b["desired_ram"], 2048u64 * 1024 * 1024);
+    }
+
+    #[test]
+    fn add_disk_body_has_path_readonly() {
+        let b = add_disk_body(std::path::Path::new("/d.raw"), true);
+        assert_eq!(b["path"], "/d.raw");
+        assert_eq!(b["readonly"], true);
     }
 
     // Spins a one-shot hyper server bound to a unix socket, asserts the client
