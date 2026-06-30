@@ -5,6 +5,16 @@ use vte::prelude::*;
 
 pub struct Console {
     _hub: Arc<ConsoleHub>,
+    /// The broadcast-forwarding task. Aborted on drop (when the page is popped)
+    /// so the subscription + its sender end, which closes the channel and ends
+    /// the GTK-side feed loop too — no per-open task/subscription leak.
+    sub_task: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for Console {
+    fn drop(&mut self) {
+        self.sub_task.abort();
+    }
 }
 
 #[relm4::component(pub)]
@@ -55,7 +65,7 @@ impl Component for Console {
 
         // Tail + live stream: hub bytes -> terminal.feed (on GTK thread via async_channel).
         let (tx, rx) = async_channel::unbounded::<Vec<u8>>();
-        {
+        let sub_task = {
             let hub = hub.clone();
             let id = id.clone();
             crate::runtime::rt().spawn(async move {
@@ -76,17 +86,22 @@ impl Component for Console {
                         }
                     }
                 }
-            });
-        }
+                // tx drops here when the task ends/aborts -> the feed loop's rx closes.
+            })
+        };
 
         // Receive on the GTK/glib main thread; feed bytes into the terminal widget.
+        // Ends when `sub_task` drops its `tx` (task completes or is aborted on drop).
         relm4::spawn_local(async move {
             while let Ok(bytes) = rx.recv().await {
                 term.feed(&bytes);
             }
         });
 
-        let model = Console { _hub: hub };
+        let model = Console {
+            _hub: hub,
+            sub_task,
+        };
         ComponentParts { model, widgets }
     }
 }

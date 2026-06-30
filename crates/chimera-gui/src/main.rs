@@ -16,7 +16,32 @@ pub const NETD_BIN: &[u8] = include_bytes!(env!("CHIMERA_NETD_BIN"));
 /// The polkit policy shipped alongside the helper.
 pub const NETD_POLICY: &str = include_str!("../../../packaging/org.chimera.netd.policy");
 /// The app logo, embedded at build time.
-pub const LOGO_PNG: &[u8] = include_bytes!("../../../assets/chimera-logo.png");
+/// Square mark, installed as the themed app icon `org.chimera.app` so the
+/// About dialog and window/taskbar show the real logo (Adwaita's About is
+/// icon-name based, not paintable based).
+pub const LOGO_SVG: &[u8] = include_bytes!("../../../assets/chimera-mark.svg");
+
+/// Base icon directory we register with the icon theme (`<data>/icons`).
+pub fn icon_search_dir() -> std::path::PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("icons")
+}
+
+/// Write the mark into the user icon theme as `org.chimera.app.svg` if absent.
+fn install_app_icon() {
+    let dir = icon_search_dir()
+        .join("hicolor")
+        .join("scalable")
+        .join("apps");
+    let dest = dir.join("org.chimera.app.svg");
+    if dest.exists() {
+        return;
+    }
+    if std::fs::create_dir_all(&dir).is_ok() {
+        let _ = std::fs::write(&dest, LOGO_SVG);
+    }
+}
 
 use chimera_core::console::ConsoleHub;
 use chimera_core::model::VmStatus;
@@ -102,6 +127,8 @@ fn main() {
         });
     }
 
+    install_app_icon();
+
     let app = RelmApp::new("org.chimera.app");
     app.run::<app::App>((hub, settings));
 }
@@ -119,8 +146,11 @@ mod embed_tests {
     }
     #[test]
     fn logo_is_embedded() {
-        assert!(!super::LOGO_PNG.is_empty(), "logo must be embedded");
-        // PNG magic bytes: \x89PNG
-        assert_eq!(&super::LOGO_PNG[..4], b"\x89PNG", "logo must be a PNG");
+        assert!(!super::LOGO_SVG.is_empty(), "logo must be embedded");
+        let head = std::str::from_utf8(&super::LOGO_SVG[..64]).unwrap_or("");
+        assert!(
+            head.contains("<svg") || head.contains("<?xml"),
+            "logo must be an SVG"
+        );
     }
 }
