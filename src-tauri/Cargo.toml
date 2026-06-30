@@ -1,0 +1,23 @@
+[package]
+name = "chimera-app"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "chimera_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { workspace = true }
+serde_json = "1"
+tokio = { workspace = true }
+chimera-core = { path = "../crates/chimera-core" }
+time = "=0.3.36"
+
+[[bin]]
+name = "chimera"
+path = "src/main.rs"
