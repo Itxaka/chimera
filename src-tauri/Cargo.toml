@@ -1,0 +1,26 @@
+[package]
+name = "chimera-app"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "chimera_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { workspace = true }
+serde_json = "1"
+tokio = { workspace = true }
+chimera-core = { path = "../crates/chimera-core" }
+# Pinned: cookie 0.18.1 (pulled transitively by Tauri 2.x) fails to compile
+# against time >= 0.3.52 (Parsable::parse signature change). Remove this pin
+# once Tauri/cookie ship a compatible release. See review note (Task 8).
+time = "=0.3.36"
+
+[[bin]]
+name = "chimera"
+path = "src/main.rs"

@@ -1,0 +1,11 @@
+[package]
+name = "chimera-netd"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+
+[[bin]]
+name = "chimera-netd"
+path = "src/main.rs"
