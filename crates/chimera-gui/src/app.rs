@@ -58,14 +58,10 @@ pub fn show_about(parent: &adw::ApplicationWindow) {
     dlg.set_comments("cloud-hypervisor fleet manager");
     dlg.set_license_type(gtk::License::Apache20);
     dlg.set_website("https://github.com/itxaka/chimera");
-    // Load embedded PNG; adw 0.9 AboutDialog uses icon name, not a paintable,
-    // so we set the GTK default icon name and let the theme supply the image.
-    // The texture is constructed only to validate the PNG bytes compile cleanly.
-    let bytes = gtk::glib::Bytes::from_static(crate::LOGO_PNG);
-    if let Ok(tex) = gtk::gdk::Texture::from_bytes(&bytes) {
-        let _ = tex;
-    }
-    dlg.set_application_icon("chimera");
+    // The logo is installed into the user icon theme as `org.chimera.app`
+    // (see main::install_app_icon) and the theme search path is registered at
+    // startup, so this name resolves to the real mark.
+    dlg.set_application_icon("org.chimera.app");
     dlg.present(Some(parent));
 }
 
@@ -91,6 +87,14 @@ impl Component for App {
     ) -> ComponentParts<Self> {
         // Load CSS after the display is available (inside startup).
         crate::style::load();
+
+        // Make the embedded app icon resolvable by name: register the user icon
+        // dir we installed it into, and set it as the default window icon.
+        if let Some(display) = gtk::gdk::Display::default() {
+            let theme = gtk::IconTheme::for_display(&display);
+            theme.add_search_path(crate::icon_search_dir());
+        }
+        gtk::Window::set_default_icon_name("org.chimera.app");
 
         let dashboard = Dashboard::builder()
             .launch((hub.clone(), settings.clone()))
