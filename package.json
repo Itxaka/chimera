@@ -1,0 +1,23 @@
+{
+  "name": "chimera",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "^3",
+    "@sveltejs/kit": "^2",
+    "@sveltejs/vite-plugin-svelte": "^3",
+    "@tauri-apps/cli": "^2",
+    "svelte": "^4",
+    "typescript": "^5",
+    "vite": "^5"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2"
+  }
+}
