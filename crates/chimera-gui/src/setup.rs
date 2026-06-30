@@ -64,9 +64,14 @@ fn run(argv: &[String]) -> Result<(), String> {
 pub fn install_nethelper() -> Result<(), String> {
     use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
-    let dir = std::env::temp_dir();
-    let netd_tmp = dir.join("chimera-netd.install");
-    let policy_tmp = dir.join("org.chimera.netd.policy");
+    // Private 0700 dir (O_EXCL mkdtemp) so a local attacker can't pre-create or
+    // symlink-swap the staged files between our write and the root `install`.
+    let dir = tempfile::Builder::new()
+        .prefix("chimera-install-")
+        .tempdir()
+        .map_err(|e| e.to_string())?;
+    let netd_tmp = dir.path().join("chimera-netd");
+    let policy_tmp = dir.path().join("org.chimera.netd.policy");
     {
         let mut f = std::fs::File::create(&netd_tmp).map_err(|e| e.to_string())?;
         f.write_all(crate::NETD_BIN).map_err(|e| e.to_string())?;
@@ -74,10 +79,12 @@ pub fn install_nethelper() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
     }
     std::fs::write(&policy_tmp, crate::NETD_POLICY).map_err(|e| e.to_string())?;
-    run(&install_argv(
+    let res = run(&install_argv(
         netd_tmp.to_str().ok_or("bad tmp path")?,
         policy_tmp.to_str().ok_or("bad tmp path")?,
-    ))
+    ));
+    drop(dir); // keep the staging dir alive until install finishes, then clean up
+    res
 }
 
 fn systemctl_active(unit: &str) -> bool {
@@ -88,7 +95,21 @@ fn systemctl_active(unit: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// A safe Linux interface name: non-empty, ≤ IFNAMSIZ-1 (15), and only
+/// `[A-Za-z0-9_-]`. Enforced before any name reaches a `pkexec sh -c` string,
+/// so a bridge name can never inject a root command.
+pub fn valid_ifname(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 15
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
 pub fn setup_bridge(name: &str, persistent: bool) -> Result<(), String> {
+    if !valid_ifname(name) {
+        return Err("invalid bridge name: use letters, digits, '-' or '_', max 15 chars".into());
+    }
     run(&bridge_runtime_argv(name))?;
     if !persistent {
         return Ok(());
@@ -175,6 +196,17 @@ fn which(bin: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn valid_ifname_rejects_injection_and_overlong() {
+        assert!(valid_ifname("chibr0"));
+        assert!(valid_ifname("br-0_a"));
+        assert!(!valid_ifname("")); // empty
+        assert!(!valid_ifname("x; rm -rf /")); // shell metachars
+        assert!(!valid_ifname("$(reboot)"));
+        assert!(!valid_ifname("a/b"));
+        assert!(!valid_ifname("0123456789abcdef")); // 16 > IFNAMSIZ-1
+    }
 
     #[test]
     fn persist_kind_precedence() {
