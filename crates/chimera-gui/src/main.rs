@@ -6,6 +6,7 @@ mod detail;
 mod helpers;
 mod runtime;
 mod settings;
+mod setup;
 mod style;
 mod vm_row;
 
