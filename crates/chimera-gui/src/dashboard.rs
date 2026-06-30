@@ -168,6 +168,10 @@ impl Component for Dashboard {
                     match res {
                         Ok((op, vm_id)) => match op {
                             "attach" => {
+                                // Drop any stale session first (e.g. the VM died
+                                // outside stop): attach is a no-op if one exists,
+                                // so a fresh start would otherwise never reconnect.
+                                hub.detach(&vm_id).await;
                                 hub.attach(&vm_id, serial_path(&vm_id)).await;
                             }
                             "detach" => {
