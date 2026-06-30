@@ -3,6 +3,42 @@ use relm4::{adw, Component, ComponentParts, ComponentSender};
 use std::sync::Arc;
 use vte::prelude::*;
 
+/// Give the serial console a readable monospace font, a dark 16-colour palette,
+/// generous scrollback, and a blinking cursor.
+fn style_terminal(term: &vte::Terminal) {
+    use vte::prelude::TerminalExt;
+    term.set_font(Some(&gtk::pango::FontDescription::from_string(
+        "monospace 11",
+    )));
+    term.set_scrollback_lines(10_000);
+    term.set_mouse_autohide(true);
+    term.set_cursor_blink_mode(vte::CursorBlinkMode::On);
+
+    let c = |s: &str| gtk::gdk::RGBA::parse(s).expect("valid colour literal");
+    let fg = c("#d8dee9");
+    let bg = c("#1b1d23");
+    let palette = [
+        c("#21222c"),
+        c("#ff5555"),
+        c("#50fa7b"),
+        c("#f1fa8c"),
+        c("#6f8cff"),
+        c("#ff79c6"),
+        c("#8be9fd"),
+        c("#f8f8f2"),
+        c("#6272a4"),
+        c("#ff6e6e"),
+        c("#69ff94"),
+        c("#ffffa5"),
+        c("#9bb0ff"),
+        c("#ff92df"),
+        c("#a4ffff"),
+        c("#ffffff"),
+    ];
+    let palette_refs: Vec<&gtk::gdk::RGBA> = palette.iter().collect();
+    term.set_colors(Some(&fg), Some(&bg), &palette_refs);
+}
+
 pub struct Console {
     _hub: Arc<ConsoleHub>,
     /// The broadcast-forwarding task. Aborted on drop (when the page is popped)
@@ -43,6 +79,7 @@ impl Component for Console {
         let term = vte::Terminal::new();
         term.set_vexpand(true);
         term.set_hexpand(true);
+        style_terminal(&term);
         toolbar.set_content(Some(&term));
 
         // adw::NavigationPage::set_child wraps a widget as the page body.
