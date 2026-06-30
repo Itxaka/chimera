@@ -1,3 +1,4 @@
+pub mod console;
 pub mod manager;
 pub mod model;
 pub mod net_client;
