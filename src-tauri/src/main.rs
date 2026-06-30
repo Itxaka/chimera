@@ -11,6 +11,13 @@ use console_commands::Forwarders;
 use std::sync::Arc;
 
 fn main() {
+    // webkit2gtk's DMABUF renderer crashes on some Wayland/driver combos
+    // ("Error 71 (Protocol error) dispatching to Wayland display"). Disabling
+    // it is the standard workaround; honor an explicit override if set.
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     let hub = Arc::new(ConsoleHub::new(ConsoleHub::default_log_dir()));
 
     // Reconcile detached VMs on launch, then attach consoles for the running ones.
