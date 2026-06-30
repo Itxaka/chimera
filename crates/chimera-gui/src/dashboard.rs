@@ -1,12 +1,19 @@
 use crate::runtime::rt;
 use crate::vm_row::{VmAction, VmRow, VmRowOut};
 use adw::prelude::*;
+use chimera_core::console::ConsoleHub;
 use chimera_core::manager::{Manager, VmView};
+use chimera_core::supervisor::Supervisor;
 use relm4::factory::FactoryVecDeque;
 use relm4::{gtk, Component, ComponentParts, ComponentSender, RelmWidgetExt};
+use std::sync::Arc;
 
 pub fn manager() -> Manager {
     Manager::with_defaults()
+}
+
+fn serial_path(id: &str) -> std::path::PathBuf {
+    Supervisor::new(Supervisor::default_run_dir()).serial_socket_path(id)
 }
 
 #[derive(Debug)]
@@ -26,12 +33,13 @@ pub enum DashboardOut {
 }
 
 pub struct Dashboard {
+    hub: Arc<ConsoleHub>,
     rows: FactoryVecDeque<VmRow>,
 }
 
 #[relm4::component(pub)]
 impl Component for Dashboard {
-    type Init = ();
+    type Init = Arc<ConsoleHub>;
     type Input = DashboardMsg;
     type Output = DashboardOut;
     type CommandOutput = Vec<VmView>;
@@ -66,7 +74,7 @@ impl Component for Dashboard {
     }
 
     fn init(
-        _: Self::Init,
+        hub: Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
@@ -77,7 +85,7 @@ impl Component for Dashboard {
                 VmRowOut::Open(id) => DashboardMsg::Open(id),
             });
 
-        let model = Dashboard { rows };
+        let model = Dashboard { hub, rows };
         let row_box = model.rows.widget();
         let widgets = view_output!();
 
@@ -122,6 +130,7 @@ impl Component for Dashboard {
             }
             DashboardMsg::Act(action, id) => {
                 let s = sender.clone();
+                let hub = self.hub.clone();
                 relm4::spawn(async move {
                     let res = rt()
                         .spawn(async move {
@@ -133,27 +142,54 @@ impl Component for Dashboard {
                                     )
                                     .load_definition(&id)
                                     .map_err(|e| e.to_string())?;
-                                    m.create(def).await.map(|_| ()).map_err(|e| e.to_string())
+                                    let view =
+                                        m.create(def).await.map_err(|e| e.to_string())?;
+                                    Ok(("attach", view.definition.id))
                                 }
-                                VmAction::Stop => {
-                                    m.stop(&id).await.map_err(|e| e.to_string())
-                                }
-                                VmAction::Pause => {
-                                    m.pause(&id).await.map_err(|e| e.to_string())
-                                }
-                                VmAction::Resume => {
-                                    m.resume(&id).await.map_err(|e| e.to_string())
-                                }
-                                VmAction::Delete => {
-                                    m.delete(&id).await.map_err(|e| e.to_string())
-                                }
+                                VmAction::Stop => m
+                                    .stop(&id)
+                                    .await
+                                    .map(|_| ("detach", id))
+                                    .map_err(|e| e.to_string()),
+                                VmAction::Pause => m
+                                    .pause(&id)
+                                    .await
+                                    .map(|_| ("none", id))
+                                    .map_err(|e| e.to_string()),
+                                VmAction::Resume => m
+                                    .resume(&id)
+                                    .await
+                                    .map(|_| ("none", id))
+                                    .map_err(|e| e.to_string()),
+                                VmAction::Delete => m
+                                    .delete(&id)
+                                    .await
+                                    .map(|_| ("delete", id))
+                                    .map_err(|e| e.to_string()),
                             }
                         })
                         .await
                         .unwrap_or_else(|e| Err(e.to_string()));
 
-                    if let Err(e) = res {
-                        s.output(DashboardOut::Error(e)).ok();
+                    match res {
+                        Ok((op, vm_id)) => {
+                            match op {
+                                "attach" => {
+                                    hub.attach(&vm_id, serial_path(&vm_id)).await;
+                                }
+                                "detach" => {
+                                    hub.detach(&vm_id).await;
+                                }
+                                "delete" => {
+                                    hub.detach(&vm_id).await;
+                                    hub.remove_logs(&vm_id).await;
+                                }
+                                _ => {}
+                            }
+                        }
+                        Err(e) => {
+                            s.output(DashboardOut::Error(e)).ok();
+                        }
                     }
                     s.input(DashboardMsg::Refresh);
                 });

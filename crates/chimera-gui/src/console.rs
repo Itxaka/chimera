@@ -1,0 +1,92 @@
+use chimera_core::console::ConsoleHub;
+use relm4::{adw, Component, ComponentParts, ComponentSender};
+use std::sync::Arc;
+use vte::prelude::*;
+
+pub struct Console {
+    _hub: Arc<ConsoleHub>,
+}
+
+#[relm4::component(pub)]
+impl Component for Console {
+    type Init = (Arc<ConsoleHub>, String);
+    type Input = ();
+    type Output = ();
+    type CommandOutput = ();
+
+    view! {
+        adw::NavigationPage {
+            set_title: "Console",
+        }
+    }
+
+    fn init(
+        (hub, id): Self::Init,
+        root: Self::Root,
+        _sender: ComponentSender<Self>,
+    ) -> ComponentParts<Self> {
+        let widgets = view_output!();
+
+        // Build child hierarchy imperatively (adw types + vte don't impl relm4 container traits).
+        let toolbar = adw::ToolbarView::new();
+        toolbar.add_top_bar(&adw::HeaderBar::new());
+        let term = vte::Terminal::new();
+        term.set_vexpand(true);
+        term.set_hexpand(true);
+        toolbar.set_content(Some(&term));
+
+        // adw::NavigationPage::set_child wraps a widget as the page body.
+        use adw::prelude::NavigationPageExt;
+        root.set_child(Some(&toolbar));
+
+        // Input: typed bytes -> guest (commit signal: &Self, &str, u32).
+        {
+            let hub = hub.clone();
+            let id = id.clone();
+            term.connect_commit(move |_t, text, _size| {
+                let bytes = text.as_bytes().to_vec();
+                let hub = hub.clone();
+                let id = id.clone();
+                crate::runtime::rt().spawn(async move {
+                    hub.write(&id, bytes).await;
+                });
+            });
+        }
+
+        // Tail + live stream: hub bytes -> terminal.feed (on GTK thread via async_channel).
+        let (tx, rx) = async_channel::unbounded::<Vec<u8>>();
+        {
+            let hub = hub.clone();
+            let id = id.clone();
+            crate::runtime::rt().spawn(async move {
+                let tail = hub.tail(&id, 4096).await;
+                if !tail.is_empty() {
+                    let _ = tx.send(tail).await;
+                }
+                if let Some(mut sub) = hub.subscribe(&id).await {
+                    loop {
+                        match sub.recv().await {
+                            Ok(bytes) => {
+                                if tx.send(bytes).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(_) => break,
+                        }
+                    }
+                }
+            });
+        }
+
+        // Receive on the GTK/glib main thread; feed bytes into the terminal widget.
+        relm4::spawn_local(async move {
+            while let Ok(bytes) = rx.recv().await {
+                term.feed(&bytes);
+            }
+        });
+
+        let model = Console { _hub: hub };
+        ComponentParts { model, widgets }
+    }
+}
