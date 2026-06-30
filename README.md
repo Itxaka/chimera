@@ -25,14 +25,18 @@
 - **Privilege isolation** — the app runs unprivileged; *all* network mutation happens in a separate `chimera-netd` helper, gated by polkit.
 
 ### Dashboard
-<img src="assets/screenshot-dashboard.png" alt="Chimera dashboard (UI mockup)" width="760">
+<img src="assets/screenshot-dashboard.png" alt="Chimera dashboard" width="820">
+
+### Create wizard
+<img src="assets/screenshot-wizard.png" alt="Chimera create-VM wizard" width="700">
+
+### VM detail
+<img src="assets/screenshot-detail.png" alt="Chimera VM detail page" width="520">
 
 ### Serial console
-<img src="assets/screenshot-console.png" alt="Chimera serial console (UI mockup)" width="760">
+<img src="assets/screenshot-console.png" alt="Chimera serial console" width="760">
 
-> The two images above are faithful mockups of the live UI (rendered from the
-> app's actual layout) — running the real GUI needs a desktop session, KVM, and
-> a configured bridge.
+> Screenshots are of the real Svelte UI, rendered headless with sample VM data.
 
 ## Architecture
 
