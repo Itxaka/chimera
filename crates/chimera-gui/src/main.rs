@@ -1,29 +1,20 @@
+mod app;
+mod dashboard;
 mod helpers;
 mod runtime;
 mod style;
+mod vm_row;
 
-use adw::prelude::*;
-use gtk::Application;
+use relm4::RelmApp;
 
 fn main() {
-    let app = Application::builder()
-        .application_id("org.chimera.app")
-        .build();
-    app.connect_activate(|app| {
-        let window = adw::ApplicationWindow::builder()
-            .application(app)
-            .default_width(1100)
-            .default_height(720)
-            .title("Chimera")
-            .build();
-        let header = adw::HeaderBar::new();
-        let toolbar = adw::ToolbarView::new();
-        toolbar.add_top_bar(&header);
-        toolbar.set_content(Some(&gtk::Label::new(Some("Chimera"))));
-        window.set_content(Some(&toolbar));
-        window.present();
+    // Reconcile detached VMs + attach consoles (ConsoleHub wired in Task 6).
+    runtime::block_on(async {
+        let _ = chimera_core::manager::Manager::with_defaults()
+            .reconcile_on_launch()
+            .await;
     });
-    // touch the runtime so the linker keeps it; real use begins in later tasks.
-    let _ = runtime::rt();
-    app.run();
+
+    let app = RelmApp::new("org.chimera.app");
+    app.run::<app::App>(());
 }
