@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/chimera-core", "crates/chimera-netd", "src-tauri"]
+members = ["crates/chimera-core", "crates/chimera-netd", "crates/chimera-gui"]
 
 [workspace.package]
 version = "0.1.0"

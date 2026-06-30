@@ -1,0 +1,204 @@
+use crate::dashboard::manager;
+use crate::helpers::validate_create;
+use crate::runtime::rt;
+use adw::prelude::*;
+use chimera_core::model::{BootConfig, DiskConfig, NetConfig, VmDefinition};
+use relm4::{adw, gtk, Component, ComponentParts, ComponentSender};
+use std::path::PathBuf;
+
+#[derive(Debug)]
+pub enum CreateMsg {
+    Submit,
+    Cancel,
+    /// Result from the async create operation: Ok(()) or Err(message).
+    CreateResult(Result<(), String>),
+}
+
+#[derive(Debug)]
+pub enum CreateOut {
+    Created,
+    Error(String),
+}
+
+pub struct CreateDialog {
+    name: adw::EntryRow,
+    vcpus: adw::SpinRow,
+    memory: adw::SpinRow,
+    disk: adw::EntryRow,
+    firmware: adw::EntryRow,
+    bridge: adw::EntryRow,
+}
+
+#[relm4::component(pub)]
+impl Component for CreateDialog {
+    type Init = ();
+    type Input = CreateMsg;
+    type Output = CreateOut;
+    type CommandOutput = ();
+
+    view! {
+        adw::Dialog {
+            set_title: "Create VM",
+            set_content_width: 460,
+        }
+    }
+
+    fn init(
+        _: Self::Init,
+        root: Self::Root,
+        sender: ComponentSender<Self>,
+    ) -> ComponentParts<Self> {
+        let widgets = view_output!();
+
+        // Build the adw widget hierarchy imperatively (adw types don't implement
+        // relm4's container traits, so we can't nest them in the view! macro).
+        let toolbar = adw::ToolbarView::new();
+        toolbar.add_top_bar(&adw::HeaderBar::new());
+
+        let group = adw::PreferencesGroup::new();
+
+        let name = adw::EntryRow::new();
+        name.set_title("Name");
+
+        let vcpus = adw::SpinRow::new(
+            Some(&gtk::Adjustment::new(2.0, 1.0, 64.0, 1.0, 1.0, 0.0)),
+            1.0,
+            0,
+        );
+        vcpus.set_title("vCPUs");
+
+        let memory = adw::SpinRow::new(
+            Some(&gtk::Adjustment::new(
+                2048.0,
+                128.0,
+                1_048_576.0,
+                128.0,
+                256.0,
+                0.0,
+            )),
+            1.0,
+            0,
+        );
+        memory.set_title("Memory (MiB)");
+
+        let disk = adw::EntryRow::new();
+        disk.set_title("Disk image path");
+
+        let firmware = adw::EntryRow::new();
+        firmware.set_title("Firmware path");
+        firmware.set_text("/var/cache/chimera-e2e/hypervisor-fw");
+
+        let bridge = adw::EntryRow::new();
+        bridge.set_title("Bridge");
+        bridge.set_text("chibr0");
+
+        group.add(&name);
+        group.add(&vcpus);
+        group.add(&memory);
+        group.add(&disk);
+        group.add(&firmware);
+        group.add(&bridge);
+
+        let btn_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        btn_box.set_halign(gtk::Align::End);
+
+        let cancel_btn = gtk::Button::with_label("Cancel");
+        let submit_btn = gtk::Button::with_label("Create");
+        submit_btn.add_css_class("suggested-action");
+
+        btn_box.append(&cancel_btn);
+        btn_box.append(&submit_btn);
+
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+        content.append(&group);
+        content.append(&btn_box);
+
+        toolbar.set_content(Some(&content));
+        root.set_child(Some(&toolbar));
+
+        // Wire up button signals.
+        let s = sender.clone();
+        cancel_btn.connect_clicked(move |_| {
+            s.input(CreateMsg::Cancel);
+        });
+        let s = sender.clone();
+        submit_btn.connect_clicked(move |_| {
+            s.input(CreateMsg::Submit);
+        });
+
+        let model = CreateDialog {
+            name,
+            vcpus,
+            memory,
+            disk,
+            firmware,
+            bridge,
+        };
+        ComponentParts { model, widgets }
+    }
+
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
+        match msg {
+            CreateMsg::Cancel => {
+                root.close();
+            }
+            CreateMsg::Submit => {
+                let name = self.name.text().to_string();
+                let vcpus = self.vcpus.value() as u32;
+                let memory = self.memory.value() as u64;
+                let disk = self.disk.text().to_string();
+                let firmware = self.firmware.text().to_string();
+                let bridge = self.bridge.text().to_string();
+
+                if let Err(e) = validate_create(&name, vcpus, memory, &disk, &firmware, &bridge) {
+                    sender.output(CreateOut::Error(e)).ok();
+                    return;
+                }
+
+                let def = VmDefinition::new(
+                    name,
+                    vcpus as u8,
+                    memory,
+                    vec![DiskConfig {
+                        path: PathBuf::from(disk),
+                        readonly: false,
+                    }],
+                    NetConfig { bridge },
+                    BootConfig::Firmware {
+                        firmware: PathBuf::from(firmware),
+                    },
+                );
+
+                // Spawn creation on chimera's runtime; feed result back as
+                // CreateMsg::CreateResult so we can close root on the UI thread.
+                let s = sender.clone();
+                relm4::spawn(async move {
+                    let res = rt()
+                        .spawn(async move {
+                            manager()
+                                .create(def)
+                                .await
+                                .map(|_| ())
+                                .map_err(|e| e.to_string())
+                        })
+                        .await
+                        .unwrap_or_else(|e| Err(e.to_string()));
+                    s.input(CreateMsg::CreateResult(res));
+                });
+            }
+            CreateMsg::CreateResult(res) => match res {
+                Ok(()) => {
+                    sender.output(CreateOut::Created).ok();
+                    root.close();
+                }
+                Err(e) => {
+                    sender.output(CreateOut::Error(e)).ok();
+                }
+            },
+        }
+    }
+}

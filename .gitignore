@@ -1,8 +1,2 @@
 /target
-/node_modules
-/build
-/.svelte-kit
-src-tauri/target
-src-tauri/gen
 /.superpowers
-tests/e2e/env.sh

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>Tauri + Svelte</strong> UI · detached per-VM processes · tap/bridge networking via a polkit-gated helper · interactive serial console
+  Native GTK4 + libadwaita UI · detached per-VM processes · tap/bridge networking via a polkit-gated helper · interactive serial console
 </p>
 
 ---
@@ -21,29 +21,19 @@
 - **Lifecycle** — start, stop (graceful → power-button → kill), pause/resume, delete.
 - **Detached VMs** — each VM is its own `cloud-hypervisor` process that survives closing the app; on relaunch Chimera reconciles its store against the live processes and reconnects.
 - **VM detail page** — full definition + runtime (pid, socket, tap) and per-VM actions.
-- **Interactive serial console** — each VM's serial output is captured from boot to a durable log; an in-app xterm.js terminal streams it live and lets you type into the guest.
+- **Interactive serial console** — each VM's serial output is captured from boot to a durable log; an in-app VTE terminal streams it live and lets you type into the guest.
 - **Privilege isolation** — the app runs unprivileged; *all* network mutation happens in a separate `chimera-netd` helper, gated by polkit.
 
-### Dashboard
-<img src="assets/screenshot-dashboard.png" alt="Chimera dashboard" width="820">
+### Screenshots
 
-### Create wizard
-<img src="assets/screenshot-wizard.png" alt="Chimera create-VM wizard" width="700">
-
-### VM detail
-<img src="assets/screenshot-detail.png" alt="Chimera VM detail page" width="520">
-
-### Serial console
-<img src="assets/screenshot-console.png" alt="Chimera serial console" width="760">
-
-> Screenshots are of the real Svelte UI, rendered headless with sample VM data.
+Screenshots: run `cargo run -p chimera-gui` (native GTK; recaptured shots pending).
 
 ## Architecture
 
 ```
-┌─ Svelte UI ──────────────┐   dashboard · create wizard · VM detail · console (xterm.js)
-└──────────┬───────────────┘
-           │ Tauri IPC (commands/events)
+┌─ GTK4 + libadwaita UI ───────┐   dashboard · create wizard · VM detail · VTE console
+└──────────┬────────────────────┘
+           │ relm4 async commands / messages
 ┌──────────▼ Rust core (chimera-core, in-app) ─────────────┐
 │  vmm-client → ch REST over a unix socket (per VM)         │
 │  supervisor → spawn detached ch, pidfiles, reconcile      │
@@ -61,11 +51,11 @@ Design and implementation notes live in [`docs/superpowers/`](docs/superpowers/)
 
 ## Prerequisites (Linux)
 
-- Rust (stable) and Node 20+
+- Rust (stable)
 - `cloud-hypervisor` on `PATH`
 - `/dev/kvm` accessible to your user (add yourself to the `kvm` group)
 - `pkexec` (polkit) and `ip` (iproute2)
-- System libraries for the Tauri webview: `webkit2gtk-4.1`, `libsoup-3.0`, `libgtk-3.0`, `libayatana-appindicator3`, `librsvg2` (the `-dev` packages to build)
+- GTK stack: `gtk4`, `libadwaita`, `vte4` (the `-dev` packages to build: `libgtk-4-dev libadwaita-1-dev libvte-2.91-gtk4-dev`)
 - An existing Linux bridge (e.g. `br0`) — Chimera attaches VMs to it; it does not create bridges.
 
 ## Install the privileged helper (required for networking)
@@ -81,15 +71,13 @@ The `exec.path` in the policy must match the installed binary path (`/usr/libexe
 ## Run (development)
 
 ```sh
-npm install
-npm run tauri dev
+cargo run -p chimera-gui
 ```
 
-## Build a release bundle
+## Build a release binary
 
 ```sh
-npm install
-npm run tauri build
+cargo build -p chimera-gui --release
 ```
 
 ## Using the serial console
@@ -118,8 +106,7 @@ re-derived by probing the live process and socket.
 ## Testing
 
 ```sh
-cargo test --workspace      # unit tests (chimera-core, chimera-netd) — what CI runs
-npm run build               # frontend build check
+cargo test --workspace      # unit tests (chimera-core, chimera-netd, chimera-gui) — what CI runs
 ```
 
 End-to-end tests drive real `cloud-hypervisor` VMs and are **opt-in** (they need
@@ -133,8 +120,7 @@ make e2e-teardown   # remove the provisioning
 
 See [`tests/e2e/README.md`](tests/e2e/README.md) for details. CI
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs `fmt`, `clippy`,
-the unit tests, and the frontend build on every push and PR; the gated e2e
-tests are skipped there.
+and the unit tests on every push and PR; the gated e2e tests are skipped there.
 
 ## Project status
 
