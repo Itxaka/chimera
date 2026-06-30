@@ -33,6 +33,9 @@ pub enum DashboardMsg {
     NewVm,
     InstallHelper,
     InstallResult(Result<(), String>),
+    /// Directly set the install-banner revealed state (used from app.rs after
+    /// a menu-triggered install/uninstall).
+    SetBannerRevealed(bool),
 }
 
 #[derive(Debug)]
@@ -258,6 +261,9 @@ impl Component for Dashboard {
                     sender.output(DashboardOut::Error(e)).ok();
                 }
             },
+            DashboardMsg::SetBannerRevealed(revealed) => {
+                self.banner.set_revealed(revealed);
+            }
         }
     }
 

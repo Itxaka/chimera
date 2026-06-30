@@ -106,6 +106,58 @@ pub fn valid_ifname(name: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
+pub fn uninstall_argv() -> Vec<String> {
+    vec![
+        "pkexec".into(),
+        "sh".into(),
+        "-c".into(),
+        "rm -f /usr/libexec/chimera-netd /usr/share/polkit-1/actions/org.chimera.netd.policy"
+            .into(),
+    ]
+}
+
+pub fn uninstall_nethelper() -> Result<(), String> {
+    run(&uninstall_argv())
+}
+
+pub fn remove_bridge_runtime_argv(name: &str) -> Vec<String> {
+    vec![
+        "pkexec".into(),
+        "sh".into(),
+        "-c".into(),
+        format!("ip link del {name}"),
+    ]
+}
+
+pub fn remove_bridge(name: &str, persistent: bool) -> Result<(), String> {
+    if !valid_ifname(name) {
+        return Err("invalid bridge name: use letters, digits, '-' or '_', max 15 chars".into());
+    }
+    run(&remove_bridge_runtime_argv(name))?;
+    if !persistent {
+        return Ok(());
+    }
+    match bridge_persist_kind(
+        systemctl_active("NetworkManager"),
+        systemctl_active("systemd-networkd"),
+    ) {
+        PersistKind::NetworkManager => run(&[
+            "pkexec".into(),
+            "nmcli".into(),
+            "con".into(),
+            "delete".into(),
+            name.into(),
+        ]),
+        PersistKind::Networkd => {
+            let script = format!(
+                "rm -f /etc/systemd/network/{name}.netdev /etc/systemd/network/{name}.network && networkctl reload"
+            );
+            run(&["pkexec".into(), "sh".into(), "-c".into(), script])
+        }
+        PersistKind::None => Ok(()),
+    }
+}
+
 pub fn setup_bridge(name: &str, persistent: bool) -> Result<(), String> {
     if !valid_ifname(name) {
         return Err("invalid bridge name: use letters, digits, '-' or '_', max 15 chars".into());
@@ -238,5 +290,26 @@ mod tests {
         assert!(networkd_netdev("br9").contains("Kind=bridge"));
         assert!(networkd_netdev("br9").contains("Name=br9"));
         assert!(networkd_network("br9").contains("[Network]"));
+    }
+
+    #[test]
+    fn uninstall_argv_removes_both_paths() {
+        let a = uninstall_argv();
+        assert_eq!(a[0], "pkexec");
+        assert!(a[3].contains("/usr/libexec/chimera-netd"));
+        assert!(a[3].contains("/usr/share/polkit-1/actions/org.chimera.netd.policy"));
+        assert!(a[3].contains("rm -f"));
+    }
+
+    #[test]
+    fn remove_bridge_argv_dels_link() {
+        let a = remove_bridge_runtime_argv("chibr0");
+        assert_eq!(a[0], "pkexec");
+        assert!(a[3].contains("ip link del chibr0"));
+    }
+
+    #[test]
+    fn remove_bridge_rejects_bad_name() {
+        assert!(remove_bridge("x; reboot", false).is_err());
     }
 }
