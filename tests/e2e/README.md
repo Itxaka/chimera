@@ -1,79 +1,46 @@
-# End-to-End Tests
+# Chimera end-to-end tests
 
-This directory contains manual procedures for testing Chimera's core functionality.
+These tests drive the real `chimera-core` `Manager` against a live
+`cloud-hypervisor` + `/dev/kvm` + tap/bridge + polkit stack. They are gated:
+they are `#[ignore]`d and only run when `CHIMERA_E2E=1`, so default `cargo test`
+skips them.
 
-## Prerequisites
+Boot verification is **state-only**: a VM is considered booted when its status
+reaches `Running` (vCPUs executing) and its process is alive. Guest OS, console,
+and guest networking are out of scope.
 
-Before running any E2E tests, ensure the following are installed and configured:
+## Requirements
 
-1. **Kernel & KVM**
-   - Linux kernel with KVM support
-   - `/dev/kvm` accessible (add your user to the `kvm` group)
-   - Verify with: `ls -l /dev/kvm`
+- Linux with `/dev/kvm` accessible to your user (in the `kvm` group).
+- `cloud-hypervisor`, `ip` (iproute2), and `pkexec` (polkit) on `PATH`.
+- Network access to fetch the pinned firmware (or set `CHIMERA_TEST_FW`).
+- `sudo` to provision the privileged helper, polkit rule, and bridge.
 
-2. **cloud-hypervisor**
-   - Installed and on your PATH
-   - Verify with: `which cloud-hypervisor`
+## Run
 
-3. **Networking**
-   - A Linux bridge configured (e.g., `br0`)
-   - iproute2 installed (`ip` command)
-   - Verify with: `ip link show br0`
-
-4. **Privileged helper**
-   - `chimera-netd` installed at `/usr/libexec/chimera-netd`
-   - polkit policy installed at `/usr/share/polkit-1/actions/org.chimera.netd.policy`
-   - Verify with: `ls -l /usr/libexec/chimera-netd`
-
-5. **Test artifacts**
-   - A bootable firmware disk image (e.g., `firmware.img`)
-   - A firmware binary (e.g., `OVMF.fd`)
-   - Verify paths are set in environment variables
-
-## Running Gated E2E Tests
-
-The gated E2E test (`create_boot_stop_roundtrip`) documents the full lifecycle: VM creation → boot → stop → cleanup.
-
-### Setup environment variables
-
-```bash
-export CHIMERA_TEST_DISK=/path/to/firmware.img
-export CHIMERA_TEST_FW=/path/to/OVMF.fd
-export CHIMERA_TEST_BRIDGE=br0
+```sh
+make e2e-setup     # one-time provisioning (root): netd + polkit rule + bridge + firmware
+make e2e           # run the gated suite
+make e2e-teardown  # remove provisioning
+# or all three with automatic teardown:
+make e2e-all
 ```
 
-### Run the test
+`setup.sh` writes `tests/e2e/env.sh` (git-ignored) with the env the run needs:
+`CHIMERA_E2E=1`, `CHIMERA_TEST_BRIDGE`, `CHIMERA_TEST_FW`. `make e2e` sources it.
 
-```bash
-cargo test -p chimera-core --test e2e_create -- --ignored --nocapture
-```
+## Knobs
 
-This will:
-1. Create a new VM definition with 1 vCPU, 512 MiB RAM
-2. Boot the VM via the Manager
-3. Verify the VM status is `Running`
-4. Stop the VM
-5. Clean up the VM from persistent storage
+| Env var | Default | Meaning |
+|---------|---------|---------|
+| `CHIMERA_TEST_BRIDGE` | `chibr0` | throwaway bridge created by setup |
+| `CHIMERA_TEST_USER` | invoking user | user granted the passwordless polkit rule |
+| `CHIMERA_TEST_FW` | fetched blob | firmware path (skips the download if set) |
+| `CHIMERA_FW_VERSION` | `0.4.2` | rust-hypervisor-firmware release to fetch |
 
-## Troubleshooting
+## What is covered
 
-- **`/dev/kvm` permission denied**: Add your user to the `kvm` group with `sudo usermod -a -G kvm $USER` and log out/in.
-- **`cloud-hypervisor` not found**: Install cloud-hypervisor and ensure it is on your PATH.
-- **Bridge not found**: Create a bridge with `sudo ip link add br0 type bridge` and bring it up with `sudo ip link set br0 up`.
-- **polkit policy denied**: Ensure the policy file is installed and readable at `/usr/share/polkit-1/actions/org.chimera.netd.policy`.
-
-## Manual Integration Flow (reference)
-
-If you want to manually test the Chimera workflow without the automated test:
-
-1. **Create a VM definition** with desired vCPU, memory, disk, and network configuration
-2. **Boot the VM** via the Manager, which:
-   - Allocates a tap device for networking
-   - Bridges it to your configured network bridge
-   - Starts cloud-hypervisor with the firmware disk
-3. **Monitor the VM** via the dashboard or CLI
-4. **Stop the VM** when complete, which:
-   - Sends a shutdown signal to cloud-hypervisor
-   - Tears down the tap device
-   - Cleans up socket and pidfiles
-5. **Delete the VM definition** to remove persistent state
+- `e2e_create_matrix` — create across vcpu/memory/disk-count/readonly options.
+- `e2e_lifecycle` — pause/resume/stop/delete and id-preserving restart.
+- `e2e_reconcile` — detached survival across "app relaunch"; dead-VM detection.
+- `e2e_failure` — bad bridge and bad firmware leave `failed` + keep the definition.
