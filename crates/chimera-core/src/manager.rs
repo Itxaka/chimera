@@ -97,7 +97,12 @@ impl Manager {
         // 4. wait for socket, then create+boot
         let client = self.client_for(&id);
         wait_for_ping(&client).await;
-        if let Err(e) = client.create(&def, &tap).await.and(client.boot().await) {
+        if let Err(e) = async {
+            client.create(&def, &tap).await?;
+            client.boot().await
+        }
+        .await
+        {
             let _ = self.supervisor.kill(pid);
             let _ = self.net.delete_tap(&tap);
             rt.pid = None;
