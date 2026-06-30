@@ -73,7 +73,9 @@ impl VmmClient {
     }
 
     pub async fn ping(&self) -> Result<(), VmmError> {
-        self.send(Method::GET, "vmm.ping", Body::empty()).await.map(|_| ())
+        self.send(Method::GET, "vmm.ping", Body::empty())
+            .await
+            .map(|_| ())
     }
 
     pub async fn create(&self, def: &VmDefinition, tap: &str) -> Result<(), VmmError> {
@@ -83,27 +85,39 @@ impl VmmClient {
     }
 
     pub async fn boot(&self) -> Result<(), VmmError> {
-        self.send(Method::PUT, "vm.boot", Body::empty()).await.map(|_| ())
+        self.send(Method::PUT, "vm.boot", Body::empty())
+            .await
+            .map(|_| ())
     }
 
     pub async fn shutdown(&self) -> Result<(), VmmError> {
-        self.send(Method::PUT, "vm.shutdown", Body::empty()).await.map(|_| ())
+        self.send(Method::PUT, "vm.shutdown", Body::empty())
+            .await
+            .map(|_| ())
     }
 
     pub async fn power_button(&self) -> Result<(), VmmError> {
-        self.send(Method::PUT, "vm.power-button", Body::empty()).await.map(|_| ())
+        self.send(Method::PUT, "vm.power-button", Body::empty())
+            .await
+            .map(|_| ())
     }
 
     pub async fn pause(&self) -> Result<(), VmmError> {
-        self.send(Method::PUT, "vm.pause", Body::empty()).await.map(|_| ())
+        self.send(Method::PUT, "vm.pause", Body::empty())
+            .await
+            .map(|_| ())
     }
 
     pub async fn resume(&self) -> Result<(), VmmError> {
-        self.send(Method::PUT, "vm.resume", Body::empty()).await.map(|_| ())
+        self.send(Method::PUT, "vm.resume", Body::empty())
+            .await
+            .map(|_| ())
     }
 
     pub async fn delete(&self) -> Result<(), VmmError> {
-        self.send(Method::PUT, "vm.delete", Body::empty()).await.map(|_| ())
+        self.send(Method::PUT, "vm.delete", Body::empty())
+            .await
+            .map(|_| ())
     }
 
     pub async fn info(&self) -> Result<VmInfo, VmmError> {
@@ -120,10 +134,19 @@ mod tests {
 
     fn def() -> VmDefinition {
         VmDefinition::new(
-            "vm".into(), 4, 4096,
-            vec![DiskConfig { path: PathBuf::from("/disk.raw"), readonly: false }],
-            NetConfig { bridge: "br0".into() },
-            BootConfig::Firmware { firmware: PathBuf::from("/CLOUDHV.fd") },
+            "vm".into(),
+            4,
+            4096,
+            vec![DiskConfig {
+                path: PathBuf::from("/disk.raw"),
+                readonly: false,
+            }],
+            NetConfig {
+                bridge: "br0".into(),
+            },
+            BootConfig::Firmware {
+                firmware: PathBuf::from("/CLOUDHV.fd"),
+            },
         )
     }
 
@@ -155,9 +178,7 @@ mod tests {
                     stream,
                     service_fn(|req| async move {
                         assert_eq!(req.uri().path(), "/api/v1/vm.info");
-                        Ok::<_, hyper::Error>(Response::new(Body::from(
-                            r#"{"state":"Running"}"#,
-                        )))
+                        Ok::<_, hyper::Error>(Response::new(Body::from(r#"{"state":"Running"}"#)))
                     }),
                 )
                 .await

@@ -101,11 +101,8 @@ mod tests {
         // We spawn `sh -c 'sleep 30'` by pointing ch_binary at a wrapper script.
         let script = tmp.path().join("fakech.sh");
         std::fs::write(&script, "#!/bin/sh\nsleep 30\n").unwrap();
-        std::fs::set_permissions(
-            &script,
-            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-        )
-        .unwrap();
+        std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
 
         let pid = sup.spawn("vm-abc", script.to_str().unwrap()).unwrap();
         assert!(pid > 0);
@@ -123,6 +120,6 @@ mod tests {
     fn is_alive_false_for_bogus_pid() {
         let tmp = tempfile::tempdir().unwrap();
         let sup = Supervisor::new(tmp.path().to_path_buf());
-        assert!(!sup.is_alive(999_999_99));
+        assert!(!sup.is_alive(99_999_999));
     }
 }

@@ -82,9 +82,16 @@ mod tests {
             "web1".into(),
             2,
             2048,
-            vec![DiskConfig { path: PathBuf::from("/img/disk.raw"), readonly: false }],
-            NetConfig { bridge: "br0".into() },
-            BootConfig::Firmware { firmware: PathBuf::from("/usr/share/cloud-hypervisor/CLOUDHV.fd") },
+            vec![DiskConfig {
+                path: PathBuf::from("/img/disk.raw"),
+                readonly: false,
+            }],
+            NetConfig {
+                bridge: "br0".into(),
+            },
+            BootConfig::Firmware {
+                firmware: PathBuf::from("/usr/share/cloud-hypervisor/CLOUDHV.fd"),
+            },
         );
         assert_eq!(d.name, "web1");
         assert_eq!(d.vcpus, 2);
@@ -100,7 +107,9 @@ mod tests {
 
     #[test]
     fn boot_config_roundtrips_toml() {
-        let b = BootConfig::Firmware { firmware: PathBuf::from("/fw.fd") };
+        let b = BootConfig::Firmware {
+            firmware: PathBuf::from("/fw.fd"),
+        };
         let t = toml::to_string(&b).unwrap();
         let back: BootConfig = toml::from_str(&t).unwrap();
         assert_eq!(b, back);

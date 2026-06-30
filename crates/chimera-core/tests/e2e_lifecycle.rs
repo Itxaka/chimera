@@ -17,7 +17,11 @@ async fn pause_resume_stop_delete_and_restart() {
     let mgr = env.manager();
 
     let disk = env.disk("life.raw", 64);
-    let def = DefBuilder::new("life").vcpus(1).memory_mib(512).disk(disk, false).build();
+    let def = DefBuilder::new("life")
+        .vcpus(1)
+        .memory_mib(512)
+        .disk(disk, false)
+        .build();
     let id = def.id.clone();
     env.track(&id);
 
@@ -27,23 +31,41 @@ async fn pause_resume_stop_delete_and_restart() {
 
     // pause -> Paused
     mgr.pause(&id).await.expect("pause");
-    assert!(wait_for_state(&mgr, &id, VmStatus::Paused, T).await, "did not reach Paused");
+    assert!(
+        wait_for_state(&mgr, &id, VmStatus::Paused, T).await,
+        "did not reach Paused"
+    );
 
     // resume -> Running
     mgr.resume(&id).await.expect("resume");
-    assert!(wait_for_state(&mgr, &id, VmStatus::Running, T).await, "did not resume to Running");
+    assert!(
+        wait_for_state(&mgr, &id, VmStatus::Running, T).await,
+        "did not resume to Running"
+    );
 
     // stop -> process gone + tap gone + Stopped
     mgr.stop(&id).await.expect("stop");
-    assert!(wait_for_state(&mgr, &id, VmStatus::Stopped, T).await, "did not reach Stopped");
-    assert!(!env.supervisor().is_alive(pid), "process still alive after stop");
+    assert!(
+        wait_for_state(&mgr, &id, VmStatus::Stopped, T).await,
+        "did not reach Stopped"
+    );
+    assert!(
+        !env.supervisor().is_alive(pid),
+        "process still alive after stop"
+    );
 
     // restart: reload definition and create again, reusing the same id
-    let stored = env.store().load_definition(&id).expect("definition kept after stop");
+    let stored = env
+        .store()
+        .load_definition(&id)
+        .expect("definition kept after stop");
     let view2 = mgr.create(stored).await.expect("restart");
     assert_eq!(view2.definition.id, id, "restart must reuse the same id");
     assert_eq!(view2.runtime.status, VmStatus::Running);
-    let pid2 = view2.runtime.pid.expect("restarted VM must have a live pid");
+    let pid2 = view2
+        .runtime
+        .pid
+        .expect("restarted VM must have a live pid");
     assert_ne!(pid2, pid, "restart must produce a new process");
 
     // delete -> store entry removed

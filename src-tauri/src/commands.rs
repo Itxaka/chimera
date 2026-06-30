@@ -28,9 +28,14 @@ pub async fn create_vm(req: CreateVmRequest) -> Result<VmView, String> {
         req.name,
         req.vcpus,
         req.memory_mib,
-        vec![DiskConfig { path: PathBuf::from(req.disk_path), readonly: false }],
+        vec![DiskConfig {
+            path: PathBuf::from(req.disk_path),
+            readonly: false,
+        }],
         NetConfig { bridge: req.bridge },
-        BootConfig::Firmware { firmware: PathBuf::from(req.firmware_path) },
+        BootConfig::Firmware {
+            firmware: PathBuf::from(req.firmware_path),
+        },
     );
     manager().create(def).await.map_err(|e| e.to_string())
 }

@@ -26,7 +26,10 @@ impl NetClient {
     }
 
     pub fn with_paths(pkexec_path: String, netd_path: String) -> Self {
-        Self { pkexec_path, netd_path }
+        Self {
+            pkexec_path,
+            netd_path,
+        }
     }
 
     pub fn create_tap_argv(&self, tap: &str, bridge: &str, user: &str) -> Vec<String> {
@@ -34,9 +37,12 @@ impl NetClient {
             self.pkexec_path.clone(),
             self.netd_path.clone(),
             "create-tap".into(),
-            "--tap".into(), tap.into(),
-            "--bridge".into(), bridge.into(),
-            "--user".into(), user.into(),
+            "--tap".into(),
+            tap.into(),
+            "--bridge".into(),
+            bridge.into(),
+            "--user".into(),
+            user.into(),
         ]
     }
 
@@ -45,7 +51,8 @@ impl NetClient {
             self.pkexec_path.clone(),
             self.netd_path.clone(),
             "delete-tap".into(),
-            "--tap".into(), tap.into(),
+            "--tap".into(),
+            tap.into(),
         ]
     }
 
@@ -100,8 +107,15 @@ mod tests {
         assert_eq!(
             argv,
             vec![
-                "pkexec", "/usr/libexec/chimera-netd", "create-tap",
-                "--tap", "ch12ab", "--bridge", "br0", "--user", "itxaka",
+                "pkexec",
+                "/usr/libexec/chimera-netd",
+                "create-tap",
+                "--tap",
+                "ch12ab",
+                "--bridge",
+                "br0",
+                "--user",
+                "itxaka",
             ]
         );
     }

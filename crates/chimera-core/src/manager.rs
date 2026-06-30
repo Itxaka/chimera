@@ -43,7 +43,12 @@ pub struct Manager {
 
 impl Manager {
     pub fn new(store: Store, supervisor: Supervisor, net: NetClient, ch_binary: String) -> Self {
-        Self { store, supervisor, net, ch_binary }
+        Self {
+            store,
+            supervisor,
+            net,
+            ch_binary,
+        }
     }
 
     pub fn with_defaults() -> Self {
@@ -67,8 +72,11 @@ impl Manager {
         // 1. persist desired config first
         self.store.save_definition(&def)?;
         let mut rt = VmRuntime {
-            pid: None, socket: socket.clone(), tap: Some(tap.clone()),
-            status: VmStatus::Creating, last_error: None,
+            pid: None,
+            socket: socket.clone(),
+            tap: Some(tap.clone()),
+            status: VmStatus::Creating,
+            last_error: None,
         };
         self.store.save_runtime(&id, &rt)?;
 
@@ -115,7 +123,10 @@ impl Manager {
         rt.status = VmStatus::Running;
         rt.last_error = None;
         self.store.save_runtime(&id, &rt)?;
-        Ok(VmView { definition: def, runtime: rt })
+        Ok(VmView {
+            definition: def,
+            runtime: rt,
+        })
     }
 
     pub async fn stop(&self, id: &str) -> Result<(), ManagerError> {
@@ -167,11 +178,20 @@ impl Manager {
         let mut views = Vec::new();
         for id in self.store.list_ids()? {
             let def = self.store.load_definition(&id)?;
-            let rt = self.refresh_runtime(&id).await.unwrap_or_else(|_| VmRuntime {
-                pid: None, socket: self.supervisor.socket_path(&id),
-                tap: None, status: VmStatus::Stopped, last_error: None,
+            let rt = self
+                .refresh_runtime(&id)
+                .await
+                .unwrap_or_else(|_| VmRuntime {
+                    pid: None,
+                    socket: self.supervisor.socket_path(&id),
+                    tap: None,
+                    status: VmStatus::Stopped,
+                    last_error: None,
+                });
+            views.push(VmView {
+                definition: def,
+                runtime: rt,
             });
-            views.push(VmView { definition: def, runtime: rt });
         }
         Ok(views)
     }

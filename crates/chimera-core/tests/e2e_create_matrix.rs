@@ -11,10 +11,17 @@ async fn create_reaches_running(env: &TestEnv, def: chimera_core::model::VmDefin
     env.track(&id);
     let mgr = env.manager();
     let view = mgr.create(def).await.expect("create");
-    assert_eq!(view.runtime.status, VmStatus::Running, "create did not boot to Running");
+    assert_eq!(
+        view.runtime.status,
+        VmStatus::Running,
+        "create did not boot to Running"
+    );
 
     // Persisted definition round-trips the options.
-    let loaded = env.store().load_definition(&id).expect("definition persisted");
+    let loaded = env
+        .store()
+        .load_definition(&id)
+        .expect("definition persisted");
     assert_eq!(loaded.vcpus, expected.vcpus);
     assert_eq!(loaded.memory_mib, expected.memory_mib);
     assert_eq!(loaded.disks, expected.disks);
@@ -33,7 +40,11 @@ async fn create_matrix_options_boot_to_running() {
     let d1 = env.disk("d1.raw", 64);
     create_reaches_running(
         &env,
-        DefBuilder::new("m-1cpu-512").vcpus(1).memory_mib(512).disk(d1, false).build(),
+        DefBuilder::new("m-1cpu-512")
+            .vcpus(1)
+            .memory_mib(512)
+            .disk(d1, false)
+            .build(),
     )
     .await;
 
@@ -41,7 +52,11 @@ async fn create_matrix_options_boot_to_running() {
     let d2 = env.disk("d2.raw", 64);
     create_reaches_running(
         &env,
-        DefBuilder::new("m-4cpu-2048").vcpus(4).memory_mib(2048).disk(d2, false).build(),
+        DefBuilder::new("m-4cpu-2048")
+            .vcpus(4)
+            .memory_mib(2048)
+            .disk(d2, false)
+            .build(),
     )
     .await;
 

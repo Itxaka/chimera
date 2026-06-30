@@ -99,10 +99,19 @@ mod tests {
 
     fn sample_def() -> VmDefinition {
         VmDefinition::new(
-            "vm1".into(), 1, 512,
-            vec![DiskConfig { path: PathBuf::from("/d.raw"), readonly: false }],
-            NetConfig { bridge: "br0".into() },
-            BootConfig::Firmware { firmware: PathBuf::from("/fw.fd") },
+            "vm1".into(),
+            1,
+            512,
+            vec![DiskConfig {
+                path: PathBuf::from("/d.raw"),
+                readonly: false,
+            }],
+            NetConfig {
+                bridge: "br0".into(),
+            },
+            BootConfig::Firmware {
+                firmware: PathBuf::from("/fw.fd"),
+            },
         )
     }
 
@@ -138,8 +147,11 @@ mod tests {
         let def = sample_def();
         store.save_definition(&def).unwrap();
         let rt = VmRuntime {
-            pid: Some(42), socket: PathBuf::from("/run/x.sock"),
-            tap: Some("tap0".into()), status: VmStatus::Running, last_error: None,
+            pid: Some(42),
+            socket: PathBuf::from("/run/x.sock"),
+            tap: Some("tap0".into()),
+            status: VmStatus::Running,
+            last_error: None,
         };
         store.save_runtime(&def.id, &rt).unwrap();
         assert_eq!(store.load_runtime(&def.id).unwrap(), rt);
@@ -154,7 +166,10 @@ mod tests {
         let def = sample_def();
         store.save_definition(&def).unwrap();
         store.delete(&def.id).unwrap();
-        assert!(matches!(store.load_definition(&def.id), Err(StoreError::NotFound(_))));
+        assert!(matches!(
+            store.load_definition(&def.id),
+            Err(StoreError::NotFound(_))
+        ));
         assert!(store.list_ids().unwrap().is_empty());
     }
 }
