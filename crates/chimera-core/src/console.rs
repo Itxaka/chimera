@@ -88,9 +88,14 @@ impl ConsoleHub {
     }
 
     pub async fn write(&self, id: &str, data: Vec<u8>) -> bool {
-        let sessions = self.sessions.lock().await;
-        match sessions.get(id) {
-            Some(s) => s.input.send(data).await.is_ok(),
+        // Clone the input sender and release the hub lock BEFORE awaiting the
+        // send, so a full channel (stalled guest) can never block other hub ops.
+        let tx = {
+            let sessions = self.sessions.lock().await;
+            sessions.get(id).map(|s| s.input.clone())
+        };
+        match tx {
+            Some(tx) => tx.send(data).await.is_ok(),
             None => false,
         }
     }
