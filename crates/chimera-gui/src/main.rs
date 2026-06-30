@@ -9,6 +9,11 @@ mod settings;
 mod style;
 mod vm_row;
 
+/// The chimera-netd binary, embedded at build time (see build.rs).
+pub const NETD_BIN: &[u8] = include_bytes!(env!("CHIMERA_NETD_BIN"));
+/// The polkit policy shipped alongside the helper.
+pub const NETD_POLICY: &str = include_str!("../../../packaging/org.chimera.netd.policy");
+
 use chimera_core::console::ConsoleHub;
 use chimera_core::model::VmStatus;
 use chimera_core::supervisor::Supervisor;
@@ -38,4 +43,17 @@ fn main() {
 
     let app = RelmApp::new("org.chimera.app");
     app.run::<app::App>(hub);
+}
+
+#[cfg(test)]
+mod embed_tests {
+    #[test]
+    fn netd_binary_is_embedded() {
+        // A real ELF (or any non-trivial binary) is far larger than this.
+        assert!(super::NETD_BIN.len() > 1024, "embedded netd looks empty");
+    }
+    #[test]
+    fn policy_mentions_action() {
+        assert!(super::NETD_POLICY.contains("org.chimera.netd.manage"));
+    }
 }
