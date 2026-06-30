@@ -93,7 +93,10 @@ mod tests {
     #[test]
     fn statm_rss_pages_times_pagesize() {
         // statm: size resident shared text lib data dt
-        assert_eq!(parse_proc_statm_rss("12345 48 20 1 0 30 0", 4096), Some(48 * 4096));
+        assert_eq!(
+            parse_proc_statm_rss("12345 48 20 1 0 30 0", 4096),
+            Some(48 * 4096)
+        );
     }
 
     #[test]

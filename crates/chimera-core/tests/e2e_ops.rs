@@ -12,7 +12,11 @@ async fn snapshot_resize_add_disk_restore_roundtrip() {
     let env = TestEnv::new();
     let mgr = env.manager();
     let disk = env.disk("ops.raw", 64);
-    let def = DefBuilder::new("ops").vcpus(1).memory_mib(512).disk(disk, false).build();
+    let def = DefBuilder::new("ops")
+        .vcpus(1)
+        .memory_mib(512)
+        .disk(disk, false)
+        .build();
     let id = def.id.clone();
     env.track(&id);
 
@@ -20,7 +24,10 @@ async fn snapshot_resize_add_disk_restore_roundtrip() {
     assert_eq!(view.runtime.status, VmStatus::Running);
 
     // metrics for a running VM
-    assert!(mgr.metrics(&id).await.is_some(), "expected metrics for a running VM");
+    assert!(
+        mgr.metrics(&id).await.is_some(),
+        "expected metrics for a running VM"
+    );
 
     // resize + add-disk (hotplug)
     mgr.resize(&id, 2, 1024).await.expect("resize");
@@ -34,6 +41,8 @@ async fn snapshot_resize_add_disk_restore_roundtrip() {
     let restored = mgr.restore(&id, &name).await.expect("restore");
     assert_eq!(restored.runtime.status, VmStatus::Running);
 
-    mgr.delete_snapshot(&id, &name).await.expect("delete snapshot");
+    mgr.delete_snapshot(&id, &name)
+        .await
+        .expect("delete snapshot");
     assert!(!mgr.list_snapshots(&id).contains(&name));
 }

@@ -147,23 +147,39 @@ impl VmmClient {
     }
 
     pub async fn snapshot(&self, dest_dir: &std::path::Path) -> Result<(), VmmError> {
-        let body = Body::from(serde_json::to_vec(&snapshot_body(dest_dir)).map_err(|e| VmmError::Http(e.to_string()))?);
-        self.send(Method::PUT, "vm.snapshot", body).await.map(|_| ())
+        let body = Body::from(
+            serde_json::to_vec(&snapshot_body(dest_dir))
+                .map_err(|e| VmmError::Http(e.to_string()))?,
+        );
+        self.send(Method::PUT, "vm.snapshot", body)
+            .await
+            .map(|_| ())
     }
 
     pub async fn restore(&self, source_dir: &std::path::Path) -> Result<(), VmmError> {
-        let body = Body::from(serde_json::to_vec(&restore_body(source_dir)).map_err(|e| VmmError::Http(e.to_string()))?);
+        let body = Body::from(
+            serde_json::to_vec(&restore_body(source_dir))
+                .map_err(|e| VmmError::Http(e.to_string()))?,
+        );
         self.send(Method::PUT, "vm.restore", body).await.map(|_| ())
     }
 
     pub async fn resize(&self, vcpus: u8, memory_mib: u64) -> Result<(), VmmError> {
-        let body = Body::from(serde_json::to_vec(&resize_body(vcpus, memory_mib)).map_err(|e| VmmError::Http(e.to_string()))?);
+        let body = Body::from(
+            serde_json::to_vec(&resize_body(vcpus, memory_mib))
+                .map_err(|e| VmmError::Http(e.to_string()))?,
+        );
         self.send(Method::PUT, "vm.resize", body).await.map(|_| ())
     }
 
     pub async fn add_disk(&self, path: &std::path::Path, readonly: bool) -> Result<(), VmmError> {
-        let body = Body::from(serde_json::to_vec(&add_disk_body(path, readonly)).map_err(|e| VmmError::Http(e.to_string()))?);
-        self.send(Method::PUT, "vm.add-disk", body).await.map(|_| ())
+        let body = Body::from(
+            serde_json::to_vec(&add_disk_body(path, readonly))
+                .map_err(|e| VmmError::Http(e.to_string()))?,
+        );
+        self.send(Method::PUT, "vm.add-disk", body)
+            .await
+            .map(|_| ())
     }
 }
 
