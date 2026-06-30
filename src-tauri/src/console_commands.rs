@@ -57,8 +57,11 @@ pub async fn console_input(
     data: Vec<u8>,
     hub: State<'_, Arc<ConsoleHub>>,
 ) -> Result<(), String> {
-    hub.write(&id, data).await;
-    Ok(())
+    if hub.write(&id, data).await {
+        Ok(())
+    } else {
+        Err("no active console session for this VM".into())
+    }
 }
 
 #[tauri::command]

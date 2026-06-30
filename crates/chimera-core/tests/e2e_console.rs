@@ -29,7 +29,8 @@ async fn console_captures_boot_output() {
 
     let logdir = tempfile::tempdir().unwrap();
     let hub = ConsoleHub::new(logdir.path().to_path_buf());
-    hub.attach(&id, env.supervisor().serial_socket_path(&id)).await;
+    hub.attach(&id, env.supervisor().serial_socket_path(&id))
+        .await;
 
     // Poll up to 30s for captured serial bytes (firmware/boot writes to ttyS0).
     let mut captured = Vec::new();
