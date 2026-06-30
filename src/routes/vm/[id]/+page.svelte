@@ -68,6 +68,7 @@
     {:else}
       <button disabled={busy} on:click={() => run(() => startVm(id))}>Start</button>
     {/if}
+    <a class="console-link" href="/vm/{id}/console">Console</a>
     <button
       disabled={busy}
       on:click={() => run(async () => { await deleteVm(id); goto('/'); })}>Delete</button
@@ -112,6 +113,7 @@
   .creating { background: #d1e7f7; }
   .err { color: #b00; }
   .actions { display: flex; gap: 0.5rem; margin: 1rem 0; }
+  .console-link { align-self: center; }
   dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
   dt { font-weight: 600; }
   dd { margin: 0; }

@@ -8,3 +8,8 @@ export const stopVm = (id: string) => invoke<void>('stop_vm', { id });
 export const pauseVm = (id: string) => invoke<void>('pause_vm', { id });
 export const resumeVm = (id: string) => invoke<void>('resume_vm', { id });
 export const deleteVm = (id: string) => invoke<void>('delete_vm', { id });
+export const openConsole = (id: string) => invoke<number[]>('open_console', { id });
+export const consoleInput = (id: string, data: number[]) =>
+  invoke<void>('console_input', { id, data });
+export const closeConsole = (id: string) => invoke<void>('close_console', { id });
+export const consoleLogPath = (id: string) => invoke<string>('console_log_path', { id });
