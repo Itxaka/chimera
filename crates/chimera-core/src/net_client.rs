@@ -75,11 +75,21 @@ impl NetClient {
 
     pub fn create_tap(&self, tap: &str, bridge: &str) -> Result<(), NetClientError> {
         let user = std::env::var("USER").unwrap_or_else(|_| "root".into());
-        self.run(self.create_tap_argv(tap, bridge, &user))
+        tracing::info!(target: "chimera::net", tap, bridge, user, "creating tap");
+        let r = self.run(self.create_tap_argv(tap, bridge, &user));
+        if let Err(e) = &r {
+            tracing::error!(target: "chimera::net", tap, error = %e, "create tap failed");
+        }
+        r
     }
 
     pub fn delete_tap(&self, tap: &str) -> Result<(), NetClientError> {
-        self.run(self.delete_tap_argv(tap))
+        tracing::info!(target: "chimera::net", tap, "deleting tap");
+        let r = self.run(self.delete_tap_argv(tap));
+        if let Err(e) = &r {
+            tracing::error!(target: "chimera::net", tap, error = %e, "delete tap failed");
+        }
+        r
     }
 }
 
