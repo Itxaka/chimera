@@ -125,11 +125,21 @@ impl Component for Dashboard {
         row_box.add_css_class("boxed-list");
         row_box.set_selection_mode(gtk::SelectionMode::None);
 
-        inner_box.append(&header_box);
+        // Header stays fixed at the top; only the VM list scrolls, and the
+        // scroller fills the remaining window height.
+        header_box.set_margin_top(12);
+        header_box.set_margin_start(12);
+        header_box.set_margin_end(12);
+
+        row_box.set_valign(gtk::Align::Start);
         inner_box.append(row_box);
         scrolled.set_child(Some(&inner_box));
+        scrolled.set_vexpand(true);
+        scrolled.set_hexpand(true);
+        scrolled.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
 
         root.append(&model.banner);
+        root.append(&header_box);
         root.append(&scrolled);
 
         let widgets = view_output!();
