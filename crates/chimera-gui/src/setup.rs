@@ -17,11 +17,34 @@ pub fn bridge_persist_kind(nm_active: bool, networkd_active: bool) -> PersistKin
     }
 }
 
-/// pkexec argv that installs the helper binary + policy in one elevated step.
-pub fn install_argv(netd_tmp: &str, policy_tmp: &str) -> Vec<String> {
+pub fn netd_rule_path() -> &'static str {
+    "/etc/polkit-1/rules.d/49-chimera-netd.rules"
+}
+
+/// polkit rule: grant `org.chimera.netd.manage` to this user without a prompt.
+pub fn rule_content(user: &str) -> String {
+    format!(
+        "// Installed by chimera install-nethelper. Lets {user} manage VM taps\n\
+         // without a password prompt. Removed by uninstall-nethelper.\n\
+         polkit.addRule(function(action, subject) {{\n\
+         \x20   if (action.id == \"org.chimera.netd.manage\" && subject.user == \"{user}\") {{\n\
+         \x20       return polkit.Result.YES;\n\
+         \x20   }}\n\
+         }});\n"
+    )
+}
+
+fn current_user() -> String {
+    std::env::var("USER").unwrap_or_default()
+}
+
+/// pkexec argv that installs the helper binary, policy, and polkit rule in one elevated step.
+pub fn install_argv(netd_tmp: &str, policy_tmp: &str, rule_tmp: &str) -> Vec<String> {
     let script = format!(
         "install -m0755 {netd_tmp} /usr/libexec/chimera-netd && \
-         install -Dm0644 {policy_tmp} /usr/share/polkit-1/actions/org.chimera.netd.policy"
+         install -Dm0644 {policy_tmp} /usr/share/polkit-1/actions/org.chimera.netd.policy && \
+         install -Dm0644 {rule_tmp} {rule}",
+        rule = netd_rule_path()
     );
     vec!["pkexec".into(), "sh".into(), "-c".into(), script]
 }
@@ -72,6 +95,7 @@ pub fn install_nethelper() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let netd_tmp = dir.path().join("chimera-netd");
     let policy_tmp = dir.path().join("org.chimera.netd.policy");
+    let rule_tmp = dir.path().join("49-chimera-netd.rules");
     {
         let mut f = std::fs::File::create(&netd_tmp).map_err(|e| e.to_string())?;
         f.write_all(crate::NETD_BIN).map_err(|e| e.to_string())?;
@@ -79,10 +103,33 @@ pub fn install_nethelper() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
     }
     std::fs::write(&policy_tmp, crate::NETD_POLICY).map_err(|e| e.to_string())?;
-    let res = run(&install_argv(
-        netd_tmp.to_str().ok_or("bad tmp path")?,
-        policy_tmp.to_str().ok_or("bad tmp path")?,
-    ));
+    let user = current_user();
+    // Without a rule the helper still works, just with a prompt each time.
+    let rule_arg = if user.is_empty() {
+        String::new()
+    } else {
+        std::fs::write(&rule_tmp, rule_content(&user)).map_err(|e| e.to_string())?;
+        rule_tmp.to_string_lossy().into_owned()
+    };
+    let res = if rule_arg.is_empty() {
+        // helper + policy only (no rule)
+        run(&[
+            "pkexec".into(),
+            "sh".into(),
+            "-c".into(),
+            format!(
+                "install -m0755 {} /usr/libexec/chimera-netd && install -Dm0644 {} /usr/share/polkit-1/actions/org.chimera.netd.policy",
+                netd_tmp.to_str().ok_or("bad tmp path")?,
+                policy_tmp.to_str().ok_or("bad tmp path")?,
+            ),
+        ])
+    } else {
+        run(&install_argv(
+            netd_tmp.to_str().ok_or("bad tmp path")?,
+            policy_tmp.to_str().ok_or("bad tmp path")?,
+            &rule_arg,
+        ))
+    };
     drop(dir); // keep the staging dir alive until install finishes, then clean up
     res
 }
@@ -126,8 +173,10 @@ pub fn uninstall_argv() -> Vec<String> {
         "pkexec".into(),
         "sh".into(),
         "-c".into(),
-        "rm -f /usr/libexec/chimera-netd /usr/share/polkit-1/actions/org.chimera.netd.policy"
-            .into(),
+        format!(
+            "rm -f /usr/libexec/chimera-netd /usr/share/polkit-1/actions/org.chimera.netd.policy {}",
+            netd_rule_path()
+        ),
     ]
 }
 
@@ -284,12 +333,34 @@ mod tests {
 
     #[test]
     fn install_argv_is_one_pkexec_with_both_installs() {
-        let a = install_argv("/tmp/n", "/tmp/p");
+        let a = install_argv("/tmp/n", "/tmp/p", "/tmp/r");
         assert_eq!(a[0], "pkexec");
         assert_eq!(a[1], "sh");
         assert_eq!(a[2], "-c");
         assert!(a[3].contains("/usr/libexec/chimera-netd"));
         assert!(a[3].contains("/usr/share/polkit-1/actions/org.chimera.netd.policy"));
+    }
+
+    #[test]
+    fn rule_content_grants_user() {
+        let r = rule_content("alice");
+        assert!(r.contains("org.chimera.netd.manage"));
+        assert!(r.contains("subject.user == \"alice\""));
+        assert!(r.contains("polkit.Result.YES"));
+    }
+
+    #[test]
+    fn install_argv_installs_helper_policy_and_rule() {
+        let a = install_argv("/t/n", "/t/p", "/t/r");
+        assert!(a[3].contains("/usr/libexec/chimera-netd"));
+        assert!(a[3].contains("/usr/share/polkit-1/actions/org.chimera.netd.policy"));
+        assert!(a[3].contains("/etc/polkit-1/rules.d/49-chimera-netd.rules"));
+    }
+
+    #[test]
+    fn uninstall_argv_removes_rule_too() {
+        let a = uninstall_argv();
+        assert!(a[3].contains("/etc/polkit-1/rules.d/49-chimera-netd.rules"));
     }
 
     #[test]
