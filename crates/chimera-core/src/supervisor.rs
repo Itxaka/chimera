@@ -1,9 +1,10 @@
 use nix::sys::signal::{kill as nix_kill, Signal};
 use nix::unistd::{setsid, Pid};
 use std::fs;
+use std::fs::OpenOptions;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SupError {
@@ -15,11 +16,16 @@ pub enum SupError {
 
 pub struct Supervisor {
     run_dir: PathBuf,
+    log_path: Option<PathBuf>,
 }
 
 impl Supervisor {
     pub fn new(run_dir: PathBuf) -> Self {
-        Self { run_dir }
+        Self::with_log(run_dir, None)
+    }
+
+    pub fn with_log(run_dir: PathBuf, log_path: Option<PathBuf>) -> Self {
+        Self { run_dir, log_path }
     }
 
     pub fn default_run_dir() -> PathBuf {
@@ -51,6 +57,16 @@ impl Supervisor {
 
         let mut cmd = Command::new(ch_binary);
         cmd.arg("--api-socket").arg(&sock);
+        // Redirect ch's stdout/stderr into the app log so its own diagnostics
+        // (e.g. `<vmm> WARN ...`) are captured alongside our tracing events.
+        if let Some(lp) = &self.log_path {
+            if let Ok(f) = OpenOptions::new().create(true).append(true).open(lp) {
+                if let Ok(f2) = f.try_clone() {
+                    cmd.stdout(Stdio::from(f));
+                    cmd.stderr(Stdio::from(f2));
+                }
+            }
+        }
         // Detach: new session so the child survives the app exiting.
         unsafe {
             cmd.pre_exec(|| {
@@ -127,5 +143,25 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let sup = Supervisor::new(tmp.path().to_path_buf());
         assert!(!sup.is_alive(99_999_999));
+    }
+
+    #[test]
+    fn spawn_redirects_child_output_to_log_when_set() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let run = tmp.path().join("run");
+        std::fs::create_dir_all(&run).unwrap();
+        let log = tmp.path().join("chimera.log");
+        // A fake "ch" that prints a marker and exits.
+        let script = tmp.path().join("fake-ch.sh");
+        std::fs::write(&script, "#!/bin/sh\necho CH_LOG_MARKER\n").unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let sup = Supervisor::with_log(run, Some(log.clone()));
+        let _pid = sup.spawn("vmlog", script.to_str().unwrap()).unwrap();
+        // Give the detached child a moment to write and exit.
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        let contents = std::fs::read_to_string(&log).unwrap_or_default();
+        assert!(contents.contains("CH_LOG_MARKER"), "log was: {contents:?}");
     }
 }
