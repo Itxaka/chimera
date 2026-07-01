@@ -3,6 +3,8 @@ use chimera_core::manager::VmView;
 use chimera_core::model::VmStatus;
 use relm4::factory::{DynamicIndex, FactoryComponent};
 use relm4::gtk;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub enum VmAction {
@@ -20,17 +22,44 @@ pub enum VmAction {
 pub enum VmRowOut {
     Action(VmAction, String),
     Open(String),
-    Console(String),
+    Console { id: String, name: String },
+}
+
+#[derive(Debug)]
+pub enum VmRowMsg {
+    Metrics {
+        cpu: Vec<f64>,
+        mem: Vec<f64>,
+        cur_cpu: f32,
+        cur_mem_mib: u64,
+    },
+}
+
+/// Shared handle used to stash a widget reference from inside `view!` closures
+/// so `update()` can drive redraws and label updates without needing `update_view`.
+type WidgetCell<W> = Rc<RefCell<Option<W>>>;
+
+fn widget_cell<W>() -> WidgetCell<W> {
+    Rc::new(RefCell::new(None))
 }
 
 pub struct VmRow {
     pub view: VmView,
+    cpu: Rc<RefCell<Vec<f64>>>,
+    mem: Rc<RefCell<Vec<f64>>>,
+    cur_cpu: f32,
+    cur_mem_mib: u64,
+    // Stashed widget handles so update() can queue redraws and set labels.
+    cpu_area_ref: WidgetCell<gtk::DrawingArea>,
+    mem_area_ref: WidgetCell<gtk::DrawingArea>,
+    cpu_label_ref: WidgetCell<gtk::Label>,
+    mem_label_ref: WidgetCell<gtk::Label>,
 }
 
 #[relm4::factory(pub)]
 impl FactoryComponent for VmRow {
     type Init = VmView;
-    type Input = ();
+    type Input = VmRowMsg;
     type Output = VmRowOut;
     type CommandOutput = ();
     type ParentWidget = gtk::ListBox;
@@ -52,23 +81,69 @@ impl FactoryComponent for VmRow {
             add_suffix = &gtk::Box {
                 set_spacing: 6,
                 set_valign: gtk::Align::Center,
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 1,
+                    set_valign: gtk::Align::Center,
+                    #[watch]
+                    set_visible: self.view.runtime.status == VmStatus::Running,
+                    gtk::Box {
+                        set_spacing: 4,
+                        gtk::Label { set_label: "CPU", add_css_class: "dim-label", add_css_class: "caption" },
+                        #[name = "cpu_area"]
+                        gtk::DrawingArea {
+                            set_content_width: 110,
+                            set_content_height: 16,
+                            set_draw_func: {
+                                let d = self.cpu.clone();
+                                move |_a, ctx, w, h| {
+                                    crate::metrics_ui::draw_sparkline(ctx, w, h, &d.borrow(), 100.0, (0.44, 0.55, 1.0));
+                                }
+                            },
+                        },
+                        #[name = "cpu_label"]
+                        gtk::Label { add_css_class: "caption", add_css_class: "numeric" },
+                    },
+                    gtk::Box {
+                        set_spacing: 4,
+                        gtk::Label { set_label: "MEM", add_css_class: "dim-label", add_css_class: "caption" },
+                        #[name = "mem_area"]
+                        gtk::DrawingArea {
+                            set_content_width: 110,
+                            set_content_height: 16,
+                            set_draw_func: {
+                                let d = self.mem.clone();
+                                move |_a, ctx, w, h| {
+                                    let max = d.borrow().iter().cloned().fold(1.0f64, f64::max);
+                                    crate::metrics_ui::draw_sparkline(ctx, w, h, &d.borrow(), max, (0.31, 0.98, 0.48));
+                                }
+                            },
+                        },
+                        #[name = "mem_label"]
+                        gtk::Label { add_css_class: "caption", add_css_class: "numeric" },
+                    },
+                },
                 gtk::Button {
                     set_icon_name: "utilities-terminal-symbolic",
                     set_tooltip_text: Some("Console"),
                     add_css_class: "flat",
                     set_visible: self.view.runtime.status == VmStatus::Running,
-                    connect_clicked[sender, id = self.view.definition.id.clone()] => move |_| {
-                        sender.output(VmRowOut::Console(id.clone())).ok();
+                    connect_clicked[sender, id = self.view.definition.id.clone(), name = self.view.definition.name.clone()] => move |_| {
+                        sender.output(VmRowOut::Console { id: id.clone(), name: name.clone() }).ok();
                     },
                 },
                 gtk::Button {
-                    set_label: primary_label(&self.view.runtime.status),
+                    set_icon_name: primary_icon(&self.view.runtime.status),
+                    set_tooltip_text: Some(primary_label(&self.view.runtime.status)),
+                    add_css_class: "flat",
                     connect_clicked[sender, id = self.view.definition.id.clone(), act = primary_action(&self.view.runtime.status)] => move |_| {
                         sender.output(VmRowOut::Action(act.clone(), id.clone())).ok();
                     },
                 },
                 gtk::Button {
-                    set_label: "Delete",
+                    set_icon_name: "user-trash-symbolic",
+                    set_tooltip_text: Some("Delete"),
+                    add_css_class: "flat",
                     add_css_class: "destructive-action",
                     connect_clicked[sender, id = self.view.definition.id.clone()] => move |_| {
                         sender.output(VmRowOut::Action(VmAction::Delete, id.clone())).ok();
@@ -83,7 +158,54 @@ impl FactoryComponent for VmRow {
         _index: &DynamicIndex,
         _sender: relm4::FactorySender<Self>,
     ) -> Self {
-        Self { view }
+        Self {
+            view,
+            cpu: Rc::new(RefCell::new(Vec::new())),
+            mem: Rc::new(RefCell::new(Vec::new())),
+            cur_cpu: 0.0,
+            cur_mem_mib: 0,
+            cpu_area_ref: widget_cell(),
+            mem_area_ref: widget_cell(),
+            cpu_label_ref: widget_cell(),
+            mem_label_ref: widget_cell(),
+        }
+    }
+
+    fn post_view() {
+        // After the view! macro builds widgets, stash the named widget handles
+        // into the model's Rc<RefCell<Option<_>>> cells so update() can reach them.
+        *self.cpu_area_ref.borrow_mut() = Some(widgets.cpu_area.clone());
+        *self.mem_area_ref.borrow_mut() = Some(widgets.mem_area.clone());
+        *self.cpu_label_ref.borrow_mut() = Some(widgets.cpu_label.clone());
+        *self.mem_label_ref.borrow_mut() = Some(widgets.mem_label.clone());
+    }
+
+    fn update(&mut self, msg: Self::Input, _sender: relm4::FactorySender<Self>) {
+        match msg {
+            VmRowMsg::Metrics {
+                cpu,
+                mem,
+                cur_cpu,
+                cur_mem_mib,
+            } => {
+                *self.cpu.borrow_mut() = cpu;
+                *self.mem.borrow_mut() = mem;
+                self.cur_cpu = cur_cpu;
+                self.cur_mem_mib = cur_mem_mib;
+                if let Some(a) = self.cpu_area_ref.borrow().as_ref() {
+                    a.queue_draw();
+                }
+                if let Some(a) = self.mem_area_ref.borrow().as_ref() {
+                    a.queue_draw();
+                }
+                if let Some(l) = self.cpu_label_ref.borrow().as_ref() {
+                    l.set_label(&format!("{}%", self.cur_cpu.round() as i64));
+                }
+                if let Some(l) = self.mem_label_ref.borrow().as_ref() {
+                    l.set_label(&format!("{}M", self.cur_mem_mib));
+                }
+            }
+        }
     }
 }
 
@@ -102,6 +224,13 @@ fn primary_label(s: &VmStatus) -> &'static str {
         VmStatus::Running => "Stop",
         VmStatus::Paused => "Resume",
         _ => "Start",
+    }
+}
+
+fn primary_icon(s: &VmStatus) -> &'static str {
+    match s {
+        VmStatus::Running => "media-playback-stop-symbolic",
+        _ => "media-playback-start-symbolic",
     }
 }
 

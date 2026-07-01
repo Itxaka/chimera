@@ -15,7 +15,7 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub enum AppMsg {
     Open(String),
-    OpenConsole(String),
+    OpenConsole(String, String),
     CloseConsole(u64),
     NewVm,
     Error(String),
@@ -128,7 +128,7 @@ impl Component for App {
             .launch((hub.clone(), settings.clone()))
             .forward(sender.input_sender(), |out| match out {
                 DashboardOut::Open(id) => AppMsg::Open(id),
-                DashboardOut::OpenConsole(id) => AppMsg::OpenConsole(id),
+                DashboardOut::OpenConsole(id, name) => AppMsg::OpenConsole(id, name),
                 DashboardOut::NewVm => AppMsg::NewVm,
                 DashboardOut::Error(e) => AppMsg::Error(e),
                 DashboardOut::Notify(m) => AppMsg::Notify(m),
@@ -254,21 +254,21 @@ impl Component for App {
                     Detail::builder()
                         .launch(id.clone())
                         .forward(sender.input_sender(), |out| match out {
-                            DetailOut::OpenConsole(id) => AppMsg::OpenConsole(id),
+                            DetailOut::OpenConsole(id) => AppMsg::OpenConsole(id.clone(), id),
                             DetailOut::Toast(msg) => AppMsg::Notify(msg),
                             DetailOut::Error(msg) => AppMsg::Error(msg),
                         });
                 self.nav.push(detail.widget());
                 self.detail = Some(detail);
             }
-            AppMsg::OpenConsole(id) => {
+            AppMsg::OpenConsole(id, name) => {
                 let key = self.console_seq;
                 self.console_seq += 1;
                 let console = Console::builder()
-                    .launch((self.hub.clone(), id.clone()))
+                    .launch((self.hub.clone(), id.clone(), name.clone()))
                     .detach();
                 let win = adw::Window::new();
-                win.set_title(Some(&format!("Console — {id}")));
+                win.set_title(Some(&format!("Console — {name}")));
                 win.set_default_size(800, 500);
                 win.set_transient_for(Some(root));
                 win.set_content(Some(console.widget()));
