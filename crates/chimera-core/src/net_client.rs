@@ -22,7 +22,9 @@ pub fn alloc_tap_name(id: &str) -> String {
 
 impl NetClient {
     pub fn new() -> Self {
-        Self::with_paths("pkexec".into(), "chimera-netd".into())
+        // Absolute install path — must match the polkit policy's exec.path, and
+        // pkexec won't find a bare name (/usr/libexec is not on PATH).
+        Self::with_paths("pkexec".into(), "/usr/libexec/chimera-netd".into())
     }
 
     pub fn with_paths(pkexec_path: String, netd_path: String) -> Self {
@@ -118,6 +120,15 @@ mod tests {
                 "itxaka",
             ]
         );
+    }
+
+    #[test]
+    fn default_new_uses_absolute_netd_path() {
+        // Regression: a bare "chimera-netd" makes pkexec fail with
+        // "No such file or directory" since /usr/libexec is not on PATH.
+        let argv = NetClient::new().create_tap_argv("ch12ab", "br0", "u");
+        assert_eq!(argv[0], "pkexec");
+        assert_eq!(argv[1], "/usr/libexec/chimera-netd");
     }
 
     #[test]
