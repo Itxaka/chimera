@@ -16,6 +16,7 @@ use std::sync::Arc;
 pub enum AppMsg {
     Open(String),
     OpenConsole(String),
+    CloseConsole(u64),
     NewVm,
     Error(String),
     // Menu actions
@@ -43,9 +44,10 @@ pub struct App {
     // Kept alive so the detail component runtime stays active while pushed.
     #[allow(dead_code)]
     detail: Option<Controller<Detail>>,
-    // Kept alive so the console component runtime stays active while pushed.
-    #[allow(dead_code)]
-    console: Option<Controller<Console>>,
+    // Each open console is its own window; kept alive here so its runtime and
+    // VTE subscription stay active until the window closes.
+    consoles: Vec<(u64, Controller<Console>)>,
+    console_seq: u64,
     // Kept alive so the prefs dialog component runtime stays active while open.
     #[allow(dead_code)]
     prefs: Option<Controller<Prefs>>,
@@ -226,7 +228,8 @@ impl Component for App {
             nav,
             create: None,
             detail: None,
-            console: None,
+            consoles: Vec::new(),
+            console_seq: 0,
             prefs: None,
             helper_section: section1,
         };
@@ -248,9 +251,29 @@ impl Component for App {
                 self.detail = Some(detail);
             }
             AppMsg::OpenConsole(id) => {
-                let console = Console::builder().launch((self.hub.clone(), id)).detach();
-                self.nav.push(console.widget());
-                self.console = Some(console);
+                let key = self.console_seq;
+                self.console_seq += 1;
+                let console = Console::builder()
+                    .launch((self.hub.clone(), id.clone()))
+                    .detach();
+                let win = adw::Window::new();
+                win.set_title(Some(&format!("Console — {id}")));
+                win.set_default_size(800, 500);
+                win.set_transient_for(Some(root));
+                win.set_content(Some(console.widget()));
+                {
+                    let s = sender.clone();
+                    win.connect_close_request(move |_| {
+                        s.input(AppMsg::CloseConsole(key));
+                        gtk::glib::Propagation::Proceed
+                    });
+                }
+                win.present();
+                self.consoles.push((key, console));
+            }
+            AppMsg::CloseConsole(key) => {
+                // Dropping the controller aborts the console's VTE subscription.
+                self.consoles.retain(|(k, _)| *k != key);
             }
             AppMsg::NewVm => {
                 let dlg = CreateDialog::builder()
