@@ -20,6 +20,7 @@ pub enum VmAction {
 pub enum VmRowOut {
     Action(VmAction, String),
     Open(String),
+    Console(String),
 }
 
 pub struct VmRow {
@@ -51,6 +52,15 @@ impl FactoryComponent for VmRow {
             add_suffix = &gtk::Box {
                 set_spacing: 6,
                 set_valign: gtk::Align::Center,
+                gtk::Button {
+                    set_icon_name: "utilities-terminal-symbolic",
+                    set_tooltip_text: Some("Console"),
+                    add_css_class: "flat",
+                    set_visible: self.view.runtime.status == VmStatus::Running,
+                    connect_clicked[sender, id = self.view.definition.id.clone()] => move |_| {
+                        sender.output(VmRowOut::Console(id.clone())).ok();
+                    },
+                },
                 gtk::Button {
                     set_label: primary_label(&self.view.runtime.status),
                     connect_clicked[sender, id = self.view.definition.id.clone(), act = primary_action(&self.view.runtime.status)] => move |_| {
