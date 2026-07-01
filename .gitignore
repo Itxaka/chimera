@@ -1,2 +1,7 @@
 /target
 /.superpowers
+
+# VM disk images / seeds — never commit
+*.raw
+*.img
+*.qcow2
