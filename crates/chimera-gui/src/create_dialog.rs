@@ -32,7 +32,6 @@ pub enum CreateMsg {
 #[derive(Debug)]
 pub enum CreateOut {
     Created,
-    Error(String),
 }
 
 pub struct CreateDialog {
@@ -44,6 +43,7 @@ pub struct CreateDialog {
     bridge: adw::EntryRow,
     cloudinit_buffer: gtk::TextBuffer,
     ch_binary: String,
+    error_banner: adw::Banner,
 }
 
 #[relm4::component(pub)]
@@ -185,11 +185,17 @@ impl Component for CreateDialog {
         btn_box.append(&cancel_btn);
         btn_box.append(&submit_btn);
 
+        // Inline error banner (validation / create failures) — shown in the
+        // dialog itself, not as a toast behind it.
+        let error_banner = adw::Banner::new("");
+        error_banner.set_revealed(false);
+
         let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
         content.set_margin_top(12);
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
+        content.append(&error_banner);
         content.append(&group);
         content.append(&btn_box);
 
@@ -215,6 +221,7 @@ impl Component for CreateDialog {
             bridge,
             cloudinit_buffer,
             ch_binary: settings.ch_binary,
+            error_banner,
         };
         ComponentParts { model, widgets }
     }
@@ -225,6 +232,7 @@ impl Component for CreateDialog {
                 root.close();
             }
             CreateMsg::Submit => {
+                self.error_banner.set_revealed(false);
                 let name = self.name.text().to_string();
                 let vcpus = self.vcpus.value() as u32;
                 let memory = self.memory.value() as u64;
@@ -233,7 +241,8 @@ impl Component for CreateDialog {
                 let bridge = self.bridge.text().to_string();
 
                 if let Err(e) = validate_create(&name, vcpus, memory, &disk, &firmware, &bridge) {
-                    sender.output(CreateOut::Error(e)).ok();
+                    self.error_banner.set_title(&e);
+                    self.error_banner.set_revealed(true);
                     return;
                 }
 
@@ -281,7 +290,8 @@ impl Component for CreateDialog {
                     root.close();
                 }
                 Err(e) => {
-                    sender.output(CreateOut::Error(e)).ok();
+                    self.error_banner.set_title(&e);
+                    self.error_banner.set_revealed(true);
                 }
             },
         }
