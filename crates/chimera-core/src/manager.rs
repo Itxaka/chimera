@@ -278,14 +278,28 @@ impl Manager {
 
     async fn refresh_runtime(&self, id: &str) -> Result<VmRuntime, ManagerError> {
         let mut rt = self.store.load_runtime(id)?;
-        let pid_alive = rt.pid.map(|p| self.supervisor.is_alive(p)).unwrap_or(false);
+        // The pidfile is authoritative for "what we actually spawned" and
+        // survives app restarts; runtime.toml's pid can be stale/None (e.g. a
+        // VM still running from a previous session). Probe the pidfile pid
+        // first so a running VM is detected as Running (matching the create
+        // guard, which also reads the pidfile) — otherwise the row shows
+        // Stopped controls for a live VM.
+        let pid = self.supervisor.read_pid(id).or(rt.pid);
+        let pid_alive = pid.map(|p| self.supervisor.is_alive(p)).unwrap_or(false);
         let ping_ok = if pid_alive {
             self.client_for(id).ping().await.is_ok()
         } else {
             false
         };
         rt.status = derive_status(pid_alive, ping_ok);
-        if !pid_alive {
+        if pid_alive {
+            rt.pid = pid;
+            // Recover the tap name (deterministic from the id) if the stored
+            // runtime lost it, so a later stop can still tear the tap down.
+            if rt.tap.is_none() {
+                rt.tap = Some(crate::net_client::alloc_tap_name(id));
+            }
+        } else {
             rt.pid = None;
         }
         self.store.save_runtime(id, &rt)?;
