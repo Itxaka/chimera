@@ -8,8 +8,8 @@ use std::path::PathBuf;
 pub enum VmmError {
     #[error("http: {0}")]
     Http(String),
-    #[error("status: {0}")]
-    Status(u16),
+    #[error("status {code}: {body}")]
+    Status { code: u16, body: String },
     #[error("connect: {0}")]
     Connect(String),
 }
@@ -83,7 +83,10 @@ impl VmmClient {
             .await
             .map_err(|e| VmmError::Http(e.to_string()))?;
         if !status.is_success() {
-            return Err(VmmError::Status(status.as_u16()));
+            return Err(VmmError::Status {
+                code: status.as_u16(),
+                body: String::from_utf8_lossy(&bytes).trim().to_string(),
+            });
         }
         Ok(bytes.to_vec())
     }
