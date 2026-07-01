@@ -218,6 +218,10 @@ impl Manager {
         if let Some(tap) = &rt.tap {
             let _ = self.net.delete_tap(tap);
         }
+        // Clear the pidfile so refresh_runtime doesn't re-detect the
+        // (possibly still-shutting-down) process as alive and flip the row back
+        // to Running — which made Stop look ignored and needed a second click.
+        self.supervisor.clear_pidfile(id);
         rt.pid = None;
         rt.status = VmStatus::Stopped;
         self.store.save_runtime(id, &rt)?;
@@ -250,6 +254,7 @@ impl Manager {
                 self.stop(id).await?;
             }
         }
+        self.supervisor.clear_pidfile(id);
         self.store.delete(id)?;
         Ok(())
     }

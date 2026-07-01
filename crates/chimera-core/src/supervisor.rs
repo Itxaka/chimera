@@ -47,6 +47,12 @@ impl Supervisor {
         self.run_dir.join(format!("{id}.pid"))
     }
 
+    /// Remove the pidfile so status probes stop treating a stopped VM's
+    /// (possibly still-shutting-down) process as alive. Idempotent.
+    pub fn clear_pidfile(&self, id: &str) {
+        let _ = fs::remove_file(self.pidfile_path(id));
+    }
+
     pub fn spawn(&self, id: &str, ch_binary: &str) -> Result<u32, SupError> {
         fs::create_dir_all(&self.run_dir)?;
         let sock = self.socket_path(id);
