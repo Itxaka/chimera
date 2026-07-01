@@ -1,5 +1,6 @@
 mod app;
 mod console;
+mod logging;
 mod create_dialog;
 mod dashboard;
 mod detail;
@@ -50,6 +51,8 @@ use relm4::RelmApp;
 use std::sync::Arc;
 
 fn main() {
+    let _log_guard = logging::init();
+    tracing::info!(target: "chimera", version = env!("CARGO_PKG_VERSION"), "chimera starting");
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         None => {} // fall through to GUI
@@ -119,6 +122,7 @@ fn main() {
         }
         Some("doctor") => {
             println!("{}", crate::setup::doctor().render());
+            println!("log: {}", logging::log_path().display());
             std::process::exit(0);
         }
         Some("--help" | "-h" | "help") => {
