@@ -256,7 +256,6 @@ impl Component for App {
                     .launch(self.settings.clone())
                     .forward(sender.input_sender(), |out| match out {
                         CreateOut::Created => AppMsg::Error("VM created".into()),
-                        CreateOut::Error(e) => AppMsg::Error(e),
                     });
                 dlg.widget().present(Some(root));
                 self.create = Some(dlg);
@@ -332,6 +331,16 @@ impl Component for App {
                 list.append(&persistent_row);
 
                 dlg.set_extra_child(Some(&list));
+
+                // Only offer Remove when the named bridge actually exists; keep
+                // it in sync as the name is edited.
+                dlg.set_response_enabled("remove", crate::setup::bridge_exists(&name_row.text()));
+                {
+                    let dlg = dlg.clone();
+                    name_row.connect_changed(move |e| {
+                        dlg.set_response_enabled("remove", crate::setup::bridge_exists(&e.text()));
+                    });
+                }
 
                 dlg.connect_response(None, move |_, response| {
                     // Read widget state before entering the async boundary.

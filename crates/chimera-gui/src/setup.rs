@@ -106,6 +106,21 @@ pub fn valid_ifname(name: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
+/// Whether a network interface with this name currently exists. Unprivileged
+/// (`ip link show` needs no root); returns false for invalid names.
+pub fn bridge_exists(name: &str) -> bool {
+    if !valid_ifname(name) {
+        return false;
+    }
+    Command::new("ip")
+        .args(["link", "show", name])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 pub fn uninstall_argv() -> Vec<String> {
     vec![
         "pkexec".into(),
