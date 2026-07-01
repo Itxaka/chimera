@@ -20,7 +20,7 @@ pub enum VmAction {
 pub enum VmRowOut {
     Action(VmAction, String),
     Open(String),
-    Console(String),
+    Console { id: String, name: String },
 }
 
 pub struct VmRow {
@@ -57,8 +57,8 @@ impl FactoryComponent for VmRow {
                     set_tooltip_text: Some("Console"),
                     add_css_class: "flat",
                     set_visible: self.view.runtime.status == VmStatus::Running,
-                    connect_clicked[sender, id = self.view.definition.id.clone()] => move |_| {
-                        sender.output(VmRowOut::Console(id.clone())).ok();
+                    connect_clicked[sender, id = self.view.definition.id.clone(), name = self.view.definition.name.clone()] => move |_| {
+                        sender.output(VmRowOut::Console { id: id.clone(), name: name.clone() }).ok();
                     },
                 },
                 gtk::Button {

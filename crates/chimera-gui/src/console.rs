@@ -55,7 +55,7 @@ impl Drop for Console {
 
 #[relm4::component(pub)]
 impl Component for Console {
-    type Init = (Arc<ConsoleHub>, String);
+    type Init = (Arc<ConsoleHub>, String, String);
     type Input = ();
     type Output = ();
     type CommandOutput = ();
@@ -67,7 +67,7 @@ impl Component for Console {
     }
 
     fn init(
-        (hub, id): Self::Init,
+        (hub, id, name): Self::Init,
         root: Self::Root,
         _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
@@ -75,7 +75,10 @@ impl Component for Console {
 
         // Build child hierarchy imperatively (adw types + vte don't impl relm4 container traits).
         let toolbar = adw::ToolbarView::new();
-        toolbar.add_top_bar(&adw::HeaderBar::new());
+        let header = adw::HeaderBar::new();
+        // Show the VM name (id as subtitle) so multiple consoles are distinguishable.
+        header.set_title_widget(Some(&adw::WindowTitle::new(&name, &id)));
+        toolbar.add_top_bar(&header);
         let term = vte::Terminal::new();
         term.set_vexpand(true);
         term.set_hexpand(true);
