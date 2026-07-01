@@ -277,9 +277,11 @@ impl Component for Dashboard {
                 });
             }
             DashboardMsg::MetricsLoaded(pairs) => {
-                let live: std::collections::HashSet<String> =
-                    pairs.iter().map(|(id, _)| id.clone()).collect();
-                self.history.retain(|id, _| live.contains(id));
+                // Prune history by VM status (running_ids from the status poll),
+                // NOT by which metrics calls succeeded — a transient metrics
+                // failure must not wipe a running VM's sparkline history.
+                let running: std::collections::HashSet<&String> = self.running_ids.iter().collect();
+                self.history.retain(|id, _| running.contains(id));
                 for (id, m) in pairs {
                     let buf = self.history.entry(id.clone()).or_default();
                     push_capped(buf, m, HISTORY_CAP);
