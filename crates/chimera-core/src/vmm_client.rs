@@ -83,9 +83,11 @@ impl VmmClient {
             .await
             .map_err(|e| VmmError::Http(e.to_string()))?;
         if !status.is_success() {
+            let body = String::from_utf8_lossy(&bytes).trim().to_string();
+            tracing::warn!(target: "chimera::vmm", endpoint, code = status.as_u16(), %body, "vmm request failed");
             return Err(VmmError::Status {
                 code: status.as_u16(),
-                body: String::from_utf8_lossy(&bytes).trim().to_string(),
+                body,
             });
         }
         Ok(bytes.to_vec())

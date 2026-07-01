@@ -30,6 +30,7 @@ pub enum DashboardMsg {
     Loaded(Vec<VmView>),
     Act(VmAction, String),
     Open(String),
+    OpenConsole(String),
     NewVm,
     InstallHelper,
     InstallResult(Result<(), String>),
@@ -41,6 +42,7 @@ pub enum DashboardMsg {
 #[derive(Debug)]
 pub enum DashboardOut {
     Open(String),
+    OpenConsole(String),
     NewVm,
     Error(String),
 }
@@ -81,6 +83,7 @@ impl Component for Dashboard {
             .forward(sender.input_sender(), |out| match out {
                 VmRowOut::Action(a, id) => DashboardMsg::Act(a, id),
                 VmRowOut::Open(id) => DashboardMsg::Open(id),
+                VmRowOut::Console(id) => DashboardMsg::OpenConsole(id),
             });
 
         let banner = adw::Banner::new("Network helper not installed");
@@ -246,6 +249,9 @@ impl Component for Dashboard {
             }
             DashboardMsg::Open(id) => {
                 sender.output(DashboardOut::Open(id)).ok();
+            }
+            DashboardMsg::OpenConsole(id) => {
+                sender.output(DashboardOut::OpenConsole(id)).ok();
             }
             DashboardMsg::NewVm => {
                 sender.output(DashboardOut::NewVm).ok();

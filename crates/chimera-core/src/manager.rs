@@ -68,6 +68,7 @@ impl Manager {
 
     pub async fn create(&self, def: VmDefinition) -> Result<VmView, ManagerError> {
         let id = def.id.clone();
+        tracing::info!(target: "chimera::manager", id = %id, "creating vm");
         let tap = crate::net_client::alloc_tap_name(&id);
         let socket = self.supervisor.socket_path(&id);
 
@@ -84,6 +85,7 @@ impl Manager {
 
         // 2. network (privileged) — rollback definition? keep it (status=failed) per spec
         if let Err(e) = self.net.create_tap(&tap, &def.net.bridge) {
+            tracing::error!(target: "chimera::manager", id = %id, error = %e, "create failed at tap");
             rt.status = VmStatus::Failed;
             rt.last_error = Some(format!("tap: {e}"));
             let _ = self.store.save_runtime(&id, &rt);
@@ -94,6 +96,7 @@ impl Manager {
         let pid = match self.supervisor.spawn(&id, &self.ch_binary) {
             Ok(p) => p,
             Err(e) => {
+                tracing::error!(target: "chimera::manager", id = %id, error = %e, "create failed at spawn");
                 let _ = self.net.delete_tap(&tap);
                 rt.status = VmStatus::Failed;
                 rt.last_error = Some(format!("spawn: {e}"));
@@ -127,6 +130,7 @@ impl Manager {
         }
         .await
         {
+            tracing::error!(target: "chimera::manager", id = %id, error = %e, "create failed at boot");
             let _ = self.supervisor.kill(pid);
             let _ = self.net.delete_tap(&tap);
             rt.pid = None;
@@ -146,6 +150,7 @@ impl Manager {
     }
 
     pub async fn stop(&self, id: &str) -> Result<(), ManagerError> {
+        tracing::info!(target: "chimera::manager", id = %id, "stopping vm");
         let mut rt = self.store.load_runtime(id)?;
         let client = self.client_for(id);
         // graceful -> power-button -> kill
@@ -164,6 +169,7 @@ impl Manager {
     }
 
     pub async fn pause(&self, id: &str) -> Result<(), ManagerError> {
+        tracing::info!(target: "chimera::manager", id = %id, "pausing vm");
         self.client_for(id).pause().await?;
         let mut rt = self.store.load_runtime(id)?;
         rt.status = VmStatus::Paused;
@@ -172,6 +178,7 @@ impl Manager {
     }
 
     pub async fn resume(&self, id: &str) -> Result<(), ManagerError> {
+        tracing::info!(target: "chimera::manager", id = %id, "resuming vm");
         self.client_for(id).resume().await?;
         let mut rt = self.store.load_runtime(id)?;
         rt.status = VmStatus::Running;
@@ -180,6 +187,7 @@ impl Manager {
     }
 
     pub async fn delete(&self, id: &str) -> Result<(), ManagerError> {
+        tracing::info!(target: "chimera::manager", id = %id, "deleting vm");
         // ensure stopped first
         if let Ok(rt) = self.store.load_runtime(id) {
             if matches!(rt.status, VmStatus::Running | VmStatus::Paused) {
@@ -229,6 +237,7 @@ impl Manager {
     }
 
     pub async fn reconcile_on_launch(&self) -> Result<(), ManagerError> {
+        tracing::info!(target: "chimera::manager", "reconciling on launch");
         for id in self.store.list_ids()? {
             let _ = self.refresh_runtime(&id).await;
         }
@@ -252,6 +261,7 @@ impl Manager {
     }
 
     pub async fn snapshot(&self, id: &str) -> Result<String, ManagerError> {
+        tracing::info!(target: "chimera::manager", id = %id, "snapshotting vm");
         let mut rt = self.store.load_runtime(id)?;
         let client = self.client_for(id);
         let name = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
@@ -274,6 +284,7 @@ impl Manager {
     }
 
     pub async fn resize(&self, id: &str, vcpus: u8, memory_mib: u64) -> Result<(), ManagerError> {
+        tracing::info!(target: "chimera::manager", id = %id, vcpus, memory_mib, "resizing vm");
         self.client_for(id).resize(vcpus, memory_mib).await?;
         let mut def = self.store.load_definition(id)?;
         def.vcpus = vcpus;
@@ -288,6 +299,7 @@ impl Manager {
         path: std::path::PathBuf,
         readonly: bool,
     ) -> Result<(), ManagerError> {
+        tracing::info!(target: "chimera::manager", id = %id, path = %path.display(), readonly, "adding disk");
         self.client_for(id).add_disk(&path, readonly).await?;
         let mut def = self.store.load_definition(id)?;
         def.disks.push(crate::model::DiskConfig { path, readonly });
@@ -296,6 +308,7 @@ impl Manager {
     }
 
     pub async fn restore(&self, id: &str, name: &str) -> Result<VmView, ManagerError> {
+        tracing::info!(target: "chimera::manager", id = %id, name, "restoring vm");
         if let Ok(rt) = self.store.load_runtime(id) {
             if matches!(rt.status, VmStatus::Running | VmStatus::Paused) {
                 self.stop(id).await?;
@@ -324,6 +337,7 @@ impl Manager {
         };
         self.store.save_runtime(id, &rt)?;
         if let Err(e) = self.net.create_tap(&tap, &def.net.bridge) {
+            tracing::error!(target: "chimera::manager", id = %id, error = %e, "restore failed at tap");
             rt.status = VmStatus::Failed;
             rt.last_error = Some(format!("tap: {e}"));
             let _ = self.store.save_runtime(id, &rt);
@@ -332,6 +346,7 @@ impl Manager {
         let pid = match self.supervisor.spawn(id, &self.ch_binary) {
             Ok(p) => p,
             Err(e) => {
+                tracing::error!(target: "chimera::manager", id = %id, error = %e, "restore failed at spawn");
                 let _ = self.net.delete_tap(&tap);
                 rt.status = VmStatus::Failed;
                 rt.last_error = Some(format!("spawn: {e}"));
@@ -344,6 +359,7 @@ impl Manager {
         let client = self.client_for(id);
         wait_for_ping(&client).await;
         if let Err(e) = client.restore(&source).await {
+            tracing::error!(target: "chimera::manager", id = %id, error = %e, "restore failed");
             let _ = self.supervisor.kill(pid);
             let _ = self.net.delete_tap(&tap);
             rt.pid = None;

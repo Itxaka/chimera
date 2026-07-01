@@ -124,6 +124,7 @@ impl Component for App {
             .launch((hub.clone(), settings.clone()))
             .forward(sender.input_sender(), |out| match out {
                 DashboardOut::Open(id) => AppMsg::Open(id),
+                DashboardOut::OpenConsole(id) => AppMsg::OpenConsole(id),
                 DashboardOut::NewVm => AppMsg::NewVm,
                 DashboardOut::Error(e) => AppMsg::Error(e),
             });
