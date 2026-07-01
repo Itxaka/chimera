@@ -269,7 +269,7 @@ impl Component for App {
                     .detach();
                 let win = adw::Window::new();
                 win.set_title(Some(&format!("Console — {name}")));
-                win.set_default_size(800, 500);
+                win.set_default_size(1000, 640);
                 win.set_transient_for(Some(root));
                 win.set_content(Some(console.widget()));
                 {

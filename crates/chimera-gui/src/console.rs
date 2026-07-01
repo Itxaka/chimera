@@ -83,6 +83,35 @@ impl Component for Console {
         term.set_vexpand(true);
         term.set_hexpand(true);
         style_terminal(&term);
+
+        // Clipboard shortcuts: Ctrl+Shift+C copies the selection, Ctrl+Shift+V
+        // pastes (the paste is delivered as input via the `commit` signal, so it
+        // reaches the guest). Mouse drag selects to PRIMARY and middle-click
+        // pastes PRIMARY — both VTE/GTK defaults, no wiring needed.
+        {
+            let kc = gtk::EventControllerKey::new();
+            let t = term.clone();
+            kc.connect_key_pressed(move |_, keyval, _keycode, state| {
+                let ctrl_shift = state.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+                    && state.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+                if ctrl_shift {
+                    match keyval.to_lower() {
+                        gtk::gdk::Key::c => {
+                            t.copy_clipboard_format(vte::Format::Text);
+                            return gtk::glib::Propagation::Stop;
+                        }
+                        gtk::gdk::Key::v => {
+                            t.paste_clipboard();
+                            return gtk::glib::Propagation::Stop;
+                        }
+                        _ => {}
+                    }
+                }
+                gtk::glib::Propagation::Proceed
+            });
+            term.add_controller(kc);
+        }
+
         toolbar.set_content(Some(&term));
 
         // adw::NavigationPage::set_child wraps a widget as the page body.
