@@ -293,8 +293,13 @@ pub fn setup_bridge(name: &str, persistent: bool) -> Result<(), String> {
     }
     run(&bridge_runtime_argv(name))?;
     // Bring up the NAT layer (IP + dnsmasq + masquerade) so guests get an
-    // address and internet. Failure here is surfaced (bridge still exists).
-    run(&net_up_argv(name))?;
+    // address and internet. If it fails (e.g. dnsmasq missing), roll back the
+    // NAT layer so we don't leave a half-configured bridge (IP + masquerade
+    // but no DHCP); the bridge link itself remains and re-running is idempotent.
+    if let Err(e) = run(&net_up_argv(name)) {
+        let _ = run(&net_down_argv(name));
+        return Err(e);
+    }
     if !persistent {
         return Ok(());
     }
