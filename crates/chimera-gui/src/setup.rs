@@ -35,7 +35,17 @@ pub fn rule_content(user: &str) -> String {
 }
 
 fn current_user() -> String {
-    std::env::var("USER").unwrap_or_default()
+    let u = std::env::var("USER").unwrap_or_default();
+    // Only accept a safe username; anything else falls through to the no-rule
+    // path (prompt each time) rather than risk garbling the polkit JS.
+    if !u.is_empty()
+        && u.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+    {
+        u
+    } else {
+        String::new()
+    }
 }
 
 /// pkexec argv that installs the helper binary, policy, and polkit rule in one elevated step.
