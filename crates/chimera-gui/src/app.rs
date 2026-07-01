@@ -19,6 +19,8 @@ pub enum AppMsg {
     CloseConsole(u64),
     NewVm,
     Error(String),
+    /// Informational/success toast (logged at info, not error).
+    Notify(String),
     // Menu actions
     ShowAbout,
     ShowPrefs,
@@ -129,6 +131,7 @@ impl Component for App {
                 DashboardOut::OpenConsole(id) => AppMsg::OpenConsole(id),
                 DashboardOut::NewVm => AppMsg::NewVm,
                 DashboardOut::Error(e) => AppMsg::Error(e),
+                DashboardOut::Notify(m) => AppMsg::Notify(m),
             });
 
         let widgets = view_output!();
@@ -178,7 +181,7 @@ impl Component for App {
                 } else {
                     "Removing network helper…"
                 };
-                s.input(AppMsg::Error(label.into()));
+                s.input(AppMsg::Notify(label.into()));
                 relm4::spawn(async move {
                     let res = rt()
                         .spawn(async move {
@@ -242,13 +245,18 @@ impl Component for App {
                 tracing::error!(target: "chimera::gui", error = %e, "error surfaced to user");
                 self.toasts.add_toast(adw::Toast::new(&e));
             }
+            AppMsg::Notify(m) => {
+                tracing::info!(target: "chimera::gui", msg = %m, "notice");
+                self.toasts.add_toast(adw::Toast::new(&m));
+            }
             AppMsg::Open(id) => {
                 let detail =
                     Detail::builder()
                         .launch(id.clone())
                         .forward(sender.input_sender(), |out| match out {
                             DetailOut::OpenConsole(id) => AppMsg::OpenConsole(id),
-                            DetailOut::Toast(msg) => AppMsg::Error(msg),
+                            DetailOut::Toast(msg) => AppMsg::Notify(msg),
+                            DetailOut::Error(msg) => AppMsg::Error(msg),
                         });
                 self.nav.push(detail.widget());
                 self.detail = Some(detail);

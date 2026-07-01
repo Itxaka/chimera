@@ -48,6 +48,8 @@ pub enum DashboardOut {
     OpenConsole(String),
     NewVm,
     Error(String),
+    /// Informational/success toast (logged at info, not error).
+    Notify(String),
 }
 
 pub struct Dashboard {
@@ -273,7 +275,7 @@ impl Component for Dashboard {
                 Ok(()) => {
                     self.banner.set_revealed(false);
                     sender
-                        .output(DashboardOut::Error("Network helper installed".into()))
+                        .output(DashboardOut::Notify("Network helper installed".into()))
                         .ok();
                 }
                 Err(e) => {

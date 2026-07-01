@@ -41,8 +41,10 @@ pub enum DetailMsg {
 #[derive(Debug)]
 pub enum DetailOut {
     OpenConsole(String),
-    /// Toast message to show in the parent app.
+    /// Informational/success toast to show in the parent app.
     Toast(String),
+    /// Error toast to show in the parent app (logged at error level).
+    Error(String),
 }
 
 // ---------------------------------------------------------------------------
@@ -405,7 +407,7 @@ impl Component for Detail {
                     });
                 }
                 Err(e) => {
-                    sender.output(DetailOut::Toast(e)).ok();
+                    sender.output(DetailOut::Error(e)).ok();
                 }
             },
 
@@ -451,7 +453,7 @@ impl Component for Detail {
                     let _ = s; // sender moved into oneshot_command
                 }
                 Err(e) => {
-                    sender.output(DetailOut::Toast(e)).ok();
+                    sender.output(DetailOut::Error(e)).ok();
                 }
             },
 
@@ -493,7 +495,7 @@ impl Component for Detail {
                     });
                 }
                 Err(e) => {
-                    sender.output(DetailOut::Toast(e)).ok();
+                    sender.output(DetailOut::Error(e)).ok();
                 }
             },
 
@@ -590,7 +592,7 @@ impl Component for Detail {
                     });
                 }
                 Err(e) => {
-                    sender.output(DetailOut::Toast(e)).ok();
+                    sender.output(DetailOut::Error(e)).ok();
                 }
             },
 
@@ -666,7 +668,7 @@ impl Component for Detail {
                     });
                 }
                 Err(e) => {
-                    sender.output(DetailOut::Toast(e)).ok();
+                    sender.output(DetailOut::Error(e)).ok();
                 }
             },
         }
