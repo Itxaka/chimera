@@ -85,24 +85,78 @@ pub fn net_up_cmds(p: &NatParams, fw: Firewall) -> Vec<Vec<String>> {
         Firewall::Nft => {
             cmds.push(s(&["nft", "add", "table", "inet", "chimera_nat"]));
             cmds.push(s(&[
-                "nft", "add", "chain", "inet", "chimera_nat", "postrouting", "{", "type", "nat",
-                "hook", "postrouting", "priority", "100", ";", "}",
+                "nft",
+                "add",
+                "chain",
+                "inet",
+                "chimera_nat",
+                "postrouting",
+                "{",
+                "type",
+                "nat",
+                "hook",
+                "postrouting",
+                "priority",
+                "100",
+                ";",
+                "}",
             ]));
             cmds.push(s(&[
-                "nft", "add", "rule", "inet", "chimera_nat", "postrouting", "ip", "saddr", p.cidr,
-                "oifname", "!=", p.bridge, "masquerade",
+                "nft",
+                "add",
+                "rule",
+                "inet",
+                "chimera_nat",
+                "postrouting",
+                "ip",
+                "saddr",
+                p.cidr,
+                "oifname",
+                "!=",
+                p.bridge,
+                "masquerade",
             ]));
             cmds.push(s(&[
-                "nft", "add", "chain", "inet", "chimera_nat", "forward", "{", "type", "filter",
-                "hook", "forward", "priority", "0", ";", "}",
+                "nft",
+                "add",
+                "chain",
+                "inet",
+                "chimera_nat",
+                "forward",
+                "{",
+                "type",
+                "filter",
+                "hook",
+                "forward",
+                "priority",
+                "0",
+                ";",
+                "}",
             ]));
             cmds.push(s(&[
-                "nft", "add", "rule", "inet", "chimera_nat", "forward", "iifname", p.bridge,
+                "nft",
+                "add",
+                "rule",
+                "inet",
+                "chimera_nat",
+                "forward",
+                "iifname",
+                p.bridge,
                 "accept",
             ]));
             cmds.push(s(&[
-                "nft", "add", "rule", "inet", "chimera_nat", "forward", "oifname", p.bridge, "ct",
-                "state", "related,established", "accept",
+                "nft",
+                "add",
+                "rule",
+                "inet",
+                "chimera_nat",
+                "forward",
+                "oifname",
+                p.bridge,
+                "ct",
+                "state",
+                "related,established",
+                "accept",
             ]));
         }
         Firewall::Iptables => {
@@ -213,16 +267,29 @@ mod tests {
 
     #[test]
     fn net_up_nft_sequence_has_addr_forward_and_masquerade() {
-        let p = NatParams { bridge: "chibr0", gateway: "192.168.100.1", prefix: 24, cidr: "192.168.100.0/24" };
+        let p = NatParams {
+            bridge: "chibr0",
+            gateway: "192.168.100.1",
+            prefix: 24,
+            cidr: "192.168.100.0/24",
+        };
         let cmds = net_up_cmds(&p, Firewall::Nft);
         // addr flush + add, then ip_forward
         assert_eq!(cmds[0], vec!["ip", "addr", "flush", "dev", "chibr0"]);
-        assert_eq!(cmds[1], vec!["ip", "addr", "add", "192.168.100.1/24", "dev", "chibr0"]);
+        assert_eq!(
+            cmds[1],
+            vec!["ip", "addr", "add", "192.168.100.1/24", "dev", "chibr0"]
+        );
         assert_eq!(cmds[2], vec!["sysctl", "-w", "net.ipv4.ip_forward=1"]);
         // a dedicated nft table is created
-        assert!(cmds.iter().any(|c| c == &vec!["nft", "add", "table", "inet", "chimera_nat"]));
+        assert!(cmds
+            .iter()
+            .any(|c| c == &vec!["nft", "add", "table", "inet", "chimera_nat"]));
         // masquerade rule references the subnet and the chimera_nat table
-        let masq = cmds.iter().find(|c| c.contains(&"masquerade".to_string())).expect("masquerade rule");
+        let masq = cmds
+            .iter()
+            .find(|c| c.contains(&"masquerade".to_string()))
+            .expect("masquerade rule");
         assert!(masq.contains(&"chimera_nat".to_string()));
         assert!(masq.contains(&"192.168.100.0/24".to_string()));
         assert!(masq.contains(&"chibr0".to_string()));
@@ -231,15 +298,29 @@ mod tests {
     #[test]
     fn net_down_nft_deletes_table_and_flushes_addr() {
         let cmds = net_down_cmds("chibr0", "192.168.100.0/24", Firewall::Nft);
-        assert_eq!(cmds[0], vec!["nft", "delete", "table", "inet", "chimera_nat"]);
-        assert_eq!(cmds[cmds.len() - 1], vec!["ip", "addr", "flush", "dev", "chibr0"]);
+        assert_eq!(
+            cmds[0],
+            vec!["nft", "delete", "table", "inet", "chimera_nat"]
+        );
+        assert_eq!(
+            cmds[cmds.len() - 1],
+            vec!["ip", "addr", "flush", "dev", "chibr0"]
+        );
     }
 
     #[test]
     fn net_up_iptables_uses_guarded_masquerade() {
-        let p = NatParams { bridge: "chibr0", gateway: "192.168.100.1", prefix: 24, cidr: "192.168.100.0/24" };
+        let p = NatParams {
+            bridge: "chibr0",
+            gateway: "192.168.100.1",
+            prefix: 24,
+            cidr: "192.168.100.0/24",
+        };
         let cmds = net_up_cmds(&p, Firewall::Iptables);
-        let masq = cmds.iter().find(|c| c.iter().any(|a| a.contains("MASQUERADE"))).expect("masquerade");
+        let masq = cmds
+            .iter()
+            .find(|c| c.iter().any(|a| a.contains("MASQUERADE")))
+            .expect("masquerade");
         assert_eq!(masq[0], "sh");
         assert_eq!(masq[1], "-c");
         // check-then-add so re-running is idempotent
@@ -250,7 +331,13 @@ mod tests {
 
     #[test]
     fn dnsmasq_cmd_binds_interface_and_sets_range_and_pidfile() {
-        let c = dnsmasq_cmd("chibr0", "192.168.100.1", "192.168.100.2", "192.168.100.254", "/run/chimera/dnsmasq-chibr0.pid");
+        let c = dnsmasq_cmd(
+            "chibr0",
+            "192.168.100.1",
+            "192.168.100.2",
+            "192.168.100.254",
+            "/run/chimera/dnsmasq-chibr0.pid",
+        );
         assert_eq!(c[0], "dnsmasq");
         assert!(c.contains(&"--interface=chibr0".to_string()));
         assert!(c.contains(&"--bind-interfaces".to_string()));
