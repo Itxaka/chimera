@@ -49,11 +49,11 @@ pub struct VmRow {
     mem: Rc<RefCell<Vec<f64>>>,
     cur_cpu: f32,
     cur_mem_mib: u64,
-    // Stashed widget handles so update() can queue redraws and set labels.
+    // Stashed DrawingArea handles so update() can queue redraws. Labels are
+    // bound via #[watch] so they always reflect the model (no blank flicker on
+    // the poll-driven row rebuild).
     cpu_area_ref: WidgetCell<gtk::DrawingArea>,
     mem_area_ref: WidgetCell<gtk::DrawingArea>,
-    cpu_label_ref: WidgetCell<gtk::Label>,
-    mem_label_ref: WidgetCell<gtk::Label>,
 }
 
 #[relm4::factory(pub)]
@@ -106,7 +106,12 @@ impl FactoryComponent for VmRow {
                             },
                         },
                         #[name = "cpu_label"]
-                        gtk::Label { add_css_class: "caption", add_css_class: "numeric" },
+                        gtk::Label {
+                            add_css_class: "caption",
+                            add_css_class: "numeric",
+                            #[watch]
+                            set_label: &format!("{}%", self.cur_cpu.round() as i64),
+                        },
                     },
                     gtk::Box {
                         set_spacing: 4,
@@ -124,7 +129,12 @@ impl FactoryComponent for VmRow {
                             },
                         },
                         #[name = "mem_label"]
-                        gtk::Label { add_css_class: "caption", add_css_class: "numeric" },
+                        gtk::Label {
+                            add_css_class: "caption",
+                            add_css_class: "numeric",
+                            #[watch]
+                            set_label: &format!("{}M", self.cur_mem_mib),
+                        },
                     },
                 },
                 gtk::Button {
@@ -170,8 +180,6 @@ impl FactoryComponent for VmRow {
             cur_mem_mib: 0,
             cpu_area_ref: widget_cell(),
             mem_area_ref: widget_cell(),
-            cpu_label_ref: widget_cell(),
-            mem_label_ref: widget_cell(),
         }
     }
 
@@ -180,8 +188,6 @@ impl FactoryComponent for VmRow {
         // into the model's Rc<RefCell<Option<_>>> cells so update() can reach them.
         *self.cpu_area_ref.borrow_mut() = Some(widgets.cpu_area.clone());
         *self.mem_area_ref.borrow_mut() = Some(widgets.mem_area.clone());
-        *self.cpu_label_ref.borrow_mut() = Some(widgets.cpu_label.clone());
-        *self.mem_label_ref.borrow_mut() = Some(widgets.mem_label.clone());
     }
 
     fn update(&mut self, msg: Self::Input, _sender: relm4::FactorySender<Self>) {
@@ -196,17 +202,13 @@ impl FactoryComponent for VmRow {
                 *self.mem.borrow_mut() = mem;
                 self.cur_cpu = cur_cpu;
                 self.cur_mem_mib = cur_mem_mib;
+                // Labels update via #[watch]; here we only trigger the
+                // sparkline redraws (DrawingArea has no watchable property).
                 if let Some(a) = self.cpu_area_ref.borrow().as_ref() {
                     a.queue_draw();
                 }
                 if let Some(a) = self.mem_area_ref.borrow().as_ref() {
                     a.queue_draw();
-                }
-                if let Some(l) = self.cpu_label_ref.borrow().as_ref() {
-                    l.set_label(&format!("{}%", self.cur_cpu.round() as i64));
-                }
-                if let Some(l) = self.mem_label_ref.borrow().as_ref() {
-                    l.set_label(&format!("{}M", self.cur_mem_mib));
                 }
             }
         }
