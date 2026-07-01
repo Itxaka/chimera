@@ -14,7 +14,10 @@ use std::sync::Arc;
 pub fn make_manager(ch_binary: &str) -> Manager {
     Manager::new(
         Store::new(Store::default_root()),
-        Supervisor::new(Supervisor::default_run_dir()),
+        Supervisor::with_log(
+            Supervisor::default_run_dir(),
+            Some(crate::logging::log_path()),
+        ),
         NetClient::new(),
         ch_binary.to_string(),
     )
