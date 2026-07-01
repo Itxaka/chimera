@@ -44,10 +44,38 @@ pub fn draw_sparkline(
     max: f64,
     rgb: (f64, f64, f64),
 ) {
-    let pts = sparkline_points(samples, max, w as f64, h as f64);
+    let wf = w as f64;
+    let hf = h as f64;
+
+    // Faint baseline so even an idle/empty sparkline reads as a chart, not a
+    // random flat line.
+    ctx.set_source_rgba(rgb.0, rgb.1, rgb.2, 0.25);
+    ctx.set_line_width(1.0);
+    ctx.move_to(0.0, hf - 0.5);
+    ctx.line_to(wf, hf - 0.5);
+    let _ = ctx.stroke();
+
+    // Inset vertically so peaks/troughs aren't clipped at the edges.
+    let pad = 2.0;
+    let pts: Vec<(f64, f64)> = sparkline_points(samples, max, wf, (hf - pad * 2.0).max(1.0))
+        .into_iter()
+        .map(|(x, y)| (x, y + pad))
+        .collect();
     if pts.len() < 2 {
         return;
     }
+
+    // Translucent fill under the curve.
+    ctx.set_source_rgba(rgb.0, rgb.1, rgb.2, 0.18);
+    ctx.move_to(pts[0].0, hf);
+    for p in &pts {
+        ctx.line_to(p.0, p.1);
+    }
+    ctx.line_to(pts[pts.len() - 1].0, hf);
+    ctx.close_path();
+    let _ = ctx.fill();
+
+    // Line on top.
     ctx.set_source_rgb(rgb.0, rgb.1, rgb.2);
     ctx.set_line_width(1.5);
     ctx.move_to(pts[0].0, pts[0].1);

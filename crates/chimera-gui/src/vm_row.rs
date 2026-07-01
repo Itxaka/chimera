@@ -93,11 +93,15 @@ impl FactoryComponent for VmRow {
                         #[name = "cpu_area"]
                         gtk::DrawingArea {
                             set_content_width: 110,
-                            set_content_height: 16,
+                            set_content_height: 28,
                             set_draw_func: {
                                 let d = self.cpu.clone();
                                 move |_a, ctx, w, h| {
-                                    crate::metrics_ui::draw_sparkline(ctx, w, h, &d.borrow(), 100.0, (0.44, 0.55, 1.0));
+                                    // Autoscale to the window's own max (floor 5%) so an
+                                    // idle guest still shows a trend instead of a flat line
+                                    // pinned to the bottom of a 0-100 scale.
+                                    let max = d.borrow().iter().cloned().fold(5.0f64, f64::max);
+                                    crate::metrics_ui::draw_sparkline(ctx, w, h, &d.borrow(), max, (0.44, 0.55, 1.0));
                                 }
                             },
                         },
@@ -110,7 +114,7 @@ impl FactoryComponent for VmRow {
                         #[name = "mem_area"]
                         gtk::DrawingArea {
                             set_content_width: 110,
-                            set_content_height: 16,
+                            set_content_height: 28,
                             set_draw_func: {
                                 let d = self.mem.clone();
                                 move |_a, ctx, w, h| {
