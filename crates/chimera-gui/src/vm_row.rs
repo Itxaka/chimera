@@ -62,13 +62,17 @@ impl FactoryComponent for VmRow {
                     },
                 },
                 gtk::Button {
-                    set_label: primary_label(&self.view.runtime.status),
+                    set_icon_name: primary_icon(&self.view.runtime.status),
+                    set_tooltip_text: Some(primary_label(&self.view.runtime.status)),
+                    add_css_class: "flat",
                     connect_clicked[sender, id = self.view.definition.id.clone(), act = primary_action(&self.view.runtime.status)] => move |_| {
                         sender.output(VmRowOut::Action(act.clone(), id.clone())).ok();
                     },
                 },
                 gtk::Button {
-                    set_label: "Delete",
+                    set_icon_name: "user-trash-symbolic",
+                    set_tooltip_text: Some("Delete"),
+                    add_css_class: "flat",
                     add_css_class: "destructive-action",
                     connect_clicked[sender, id = self.view.definition.id.clone()] => move |_| {
                         sender.output(VmRowOut::Action(VmAction::Delete, id.clone())).ok();
@@ -102,6 +106,13 @@ fn primary_label(s: &VmStatus) -> &'static str {
         VmStatus::Running => "Stop",
         VmStatus::Paused => "Resume",
         _ => "Start",
+    }
+}
+
+fn primary_icon(s: &VmStatus) -> &'static str {
+    match s {
+        VmStatus::Running => "media-playback-stop-symbolic",
+        _ => "media-playback-start-symbolic",
     }
 }
 
