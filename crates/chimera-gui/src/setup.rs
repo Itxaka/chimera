@@ -1,5 +1,57 @@
 use std::process::Command;
 
+const NETD_BIN_PATH: &str = "/usr/libexec/chimera-netd";
+
+pub const NAT_GATEWAY: &str = "192.168.100.1";
+pub const NAT_PREFIX: u8 = 24;
+pub const NAT_CIDR: &str = "192.168.100.0/24";
+pub const NAT_DHCP_LO: &str = "192.168.100.2";
+pub const NAT_DHCP_HI: &str = "192.168.100.254";
+
+/// Pidfile for the bridge's dnsmasq, under the runtime dir.
+pub fn nat_pidfile(bridge: &str) -> String {
+    chimera_core::supervisor::Supervisor::default_run_dir()
+        .join(format!("dnsmasq-{bridge}.pid"))
+        .to_string_lossy()
+        .into_owned()
+}
+
+pub fn net_up_argv(bridge: &str) -> Vec<String> {
+    vec![
+        "pkexec".into(),
+        NETD_BIN_PATH.into(),
+        "net-up".into(),
+        "--bridge".into(),
+        bridge.into(),
+        "--gateway".into(),
+        NAT_GATEWAY.into(),
+        "--prefix".into(),
+        NAT_PREFIX.to_string(),
+        "--cidr".into(),
+        NAT_CIDR.into(),
+        "--dhcp-lo".into(),
+        NAT_DHCP_LO.into(),
+        "--dhcp-hi".into(),
+        NAT_DHCP_HI.into(),
+        "--pidfile".into(),
+        nat_pidfile(bridge),
+    ]
+}
+
+pub fn net_down_argv(bridge: &str) -> Vec<String> {
+    vec![
+        "pkexec".into(),
+        NETD_BIN_PATH.into(),
+        "net-down".into(),
+        "--bridge".into(),
+        bridge.into(),
+        "--cidr".into(),
+        NAT_CIDR.into(),
+        "--pidfile".into(),
+        nat_pidfile(bridge),
+    ]
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum PersistKind {
     NetworkManager,
@@ -207,6 +259,9 @@ pub fn remove_bridge(name: &str, persistent: bool) -> Result<(), String> {
     if !valid_ifname(name) {
         return Err("invalid bridge name: use letters, digits, '-' or '_', max 15 chars".into());
     }
+    // Tear down the NAT layer first (best-effort inside netd); ignore its error
+    // so bridge removal still proceeds.
+    let _ = run(&net_down_argv(name));
     run(&remove_bridge_runtime_argv(name))?;
     if !persistent {
         return Ok(());
@@ -237,6 +292,9 @@ pub fn setup_bridge(name: &str, persistent: bool) -> Result<(), String> {
         return Err("invalid bridge name: use letters, digits, '-' or '_', max 15 chars".into());
     }
     run(&bridge_runtime_argv(name))?;
+    // Bring up the NAT layer (IP + dnsmasq + masquerade) so guests get an
+    // address and internet. Failure here is surfaced (bridge still exists).
+    run(&net_up_argv(name))?;
     if !persistent {
         return Ok(());
     }
@@ -288,6 +346,8 @@ pub struct DoctorReport {
     pub cloud_hypervisor: bool,
     pub netd: bool,
     pub policy: bool,
+    pub dnsmasq: bool,
+    pub ip_forward: bool,
 }
 
 pub fn doctor() -> DoctorReport {
@@ -297,6 +357,10 @@ pub fn doctor() -> DoctorReport {
         netd: netd_installed(),
         policy: std::path::Path::new("/usr/share/polkit-1/actions/org.chimera.netd.policy")
             .exists(),
+        dnsmasq: which("dnsmasq"),
+        ip_forward: std::fs::read_to_string("/proc/sys/net/ipv4/ip_forward")
+            .map(|s| s.trim() == "1")
+            .unwrap_or(false),
     }
 }
 
@@ -304,11 +368,13 @@ impl DoctorReport {
     pub fn render(&self) -> String {
         let m = |b: bool| if b { "✓" } else { "✗" };
         format!(
-            "{} /dev/kvm accessible\n{} cloud-hypervisor on PATH\n{} chimera-netd installed\n{} polkit policy installed",
+            "{} /dev/kvm accessible\n{} cloud-hypervisor on PATH\n{} chimera-netd installed\n{} polkit policy installed\n{} dnsmasq on PATH\n{} ipv4 forwarding enabled",
             m(self.kvm),
             m(self.cloud_hypervisor),
             m(self.netd),
-            m(self.policy)
+            m(self.policy),
+            m(self.dnsmasq),
+            m(self.ip_forward)
         )
     }
 }
@@ -407,5 +473,35 @@ mod tests {
     #[test]
     fn remove_bridge_rejects_bad_name() {
         assert!(remove_bridge("x; reboot", false).is_err());
+    }
+
+    #[test]
+    fn net_up_argv_uses_absolute_netd_and_nat_constants() {
+        let a = net_up_argv("chibr0");
+        assert_eq!(a[0], "pkexec");
+        assert_eq!(a[1], "/usr/libexec/chimera-netd");
+        assert_eq!(a[2], "net-up");
+        assert!(a.contains(&"--bridge".to_string()));
+        assert!(a.contains(&"chibr0".to_string()));
+        assert!(a.contains(&"192.168.100.1".to_string()));
+        assert!(a.contains(&"192.168.100.0/24".to_string()));
+        assert!(a.iter().any(|x| x.ends_with("dnsmasq-chibr0.pid")));
+    }
+
+    #[test]
+    fn net_down_argv_is_minimal_and_absolute() {
+        let a = net_down_argv("chibr0");
+        assert_eq!(a[0], "pkexec");
+        assert_eq!(a[1], "/usr/libexec/chimera-netd");
+        assert_eq!(a[2], "net-down");
+        assert!(a.contains(&"192.168.100.0/24".to_string()));
+        assert!(a.iter().any(|x| x.ends_with("dnsmasq-chibr0.pid")));
+    }
+
+    #[test]
+    fn nat_constants_are_consistent() {
+        assert!(NAT_CIDR.starts_with("192.168.100."));
+        assert!(NAT_GATEWAY.starts_with("192.168.100."));
+        assert_eq!(NAT_PREFIX, 24);
     }
 }
