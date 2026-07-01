@@ -103,18 +103,15 @@ impl Component for Console {
             });
         }
 
-        // Tail + live stream: hub bytes -> terminal.feed (on GTK thread via async_channel).
+        // Live stream: subscribe (retry for an in-flight attach on a just-started
+        // VM) and forward only NEW bytes. The captured backlog is fed separately
+        // on `map` (below) so it renders even if the terminal wasn't realized when
+        // the window opened.
         let (tx, rx) = async_channel::unbounded::<Vec<u8>>();
         let sub_task = {
             let hub = hub.clone();
             let id = id.clone();
             crate::runtime::rt().spawn(async move {
-                // Subscribe FIRST, retrying briefly: on a just-started VM the
-                // console can open before the hub has attached the session, and
-                // if we gave up here the terminal would stay blank forever
-                // (reopening "worked" only because the session existed by then).
-                // Subscribing before reading the tail also means no bytes are
-                // lost in the gap between the tail read and the live stream.
                 let mut sub = None;
                 for _ in 0..50 {
                     if let Some(s) = hub.subscribe(&id).await {
@@ -122,12 +119,6 @@ impl Component for Console {
                         break;
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                }
-                // Backlog from the capped log so an early-opened console still
-                // shows the boot output already captured.
-                let tail = hub.tail(&id, 65536).await;
-                if !tail.is_empty() {
-                    let _ = tx.send(tail).await;
                 }
                 match sub {
                     Some(mut sub) => loop {
@@ -151,7 +142,31 @@ impl Component for Console {
             })
         };
 
-        // Receive on the GTK/glib main thread; feed bytes into the terminal widget.
+        // Feed the captured backlog once the terminal is actually mapped (shown).
+        // Feeding during init races widget realization on a fresh window; for an
+        // idle guest (no new serial bytes) that left the terminal blank.
+        {
+            let hub = hub.clone();
+            let id = id.clone();
+            let term_for_tail = term.clone();
+            let done = std::rc::Rc::new(std::cell::Cell::new(false));
+            term.connect_map(move |_| {
+                if done.replace(true) {
+                    return;
+                }
+                let hub = hub.clone();
+                let id = id.clone();
+                let term = term_for_tail.clone();
+                relm4::spawn_local(async move {
+                    let tail = hub.tail(&id, 65536).await;
+                    if !tail.is_empty() {
+                        term.feed(&tail);
+                    }
+                });
+            });
+        }
+
+        // Live feed loop: new bytes -> terminal widget (on the glib main thread).
         // Ends when `sub_task` drops its `tx` (task completes or is aborted on drop).
         relm4::spawn_local(async move {
             while let Ok(bytes) = rx.recv().await {
