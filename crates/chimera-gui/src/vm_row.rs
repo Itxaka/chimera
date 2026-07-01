@@ -82,8 +82,8 @@ impl FactoryComponent for VmRow {
                 set_spacing: 6,
                 set_valign: gtk::Align::Center,
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 1,
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
                     set_valign: gtk::Align::Center,
                     #[watch]
                     set_visible: self.view.runtime.status == VmStatus::Running,
