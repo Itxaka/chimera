@@ -238,7 +238,10 @@ impl Component for App {
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
         match msg {
-            AppMsg::Error(e) => self.toasts.add_toast(adw::Toast::new(&e)),
+            AppMsg::Error(e) => {
+                tracing::error!(target: "chimera::gui", error = %e, "error surfaced to user");
+                self.toasts.add_toast(adw::Toast::new(&e));
+            }
             AppMsg::Open(id) => {
                 let detail =
                     Detail::builder()
@@ -316,9 +319,11 @@ impl Component for App {
                         } else {
                             "Network helper removed"
                         };
+                        tracing::info!(target: "chimera::gui", %msg, "helper toggle ok");
                         self.toasts.add_toast(adw::Toast::new(msg));
                     }
                     Err(e) => {
+                        tracing::error!(target: "chimera::gui", error = %e, "helper toggle failed");
                         self.toasts.add_toast(adw::Toast::new(e));
                     }
                 }
@@ -397,9 +402,11 @@ impl Component for App {
             }
             AppMsg::BridgeResult(res, ok_msg) => match res {
                 Ok(()) => {
+                    tracing::info!(target: "chimera::gui", msg = %ok_msg, "bridge op ok");
                     self.toasts.add_toast(adw::Toast::new(ok_msg));
                 }
                 Err(e) => {
+                    tracing::error!(target: "chimera::gui", error = %e, "bridge op failed");
                     self.toasts.add_toast(adw::Toast::new(&e));
                 }
             },
