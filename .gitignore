@@ -5,3 +5,4 @@
 *.raw
 *.img
 *.qcow2
+*.fd

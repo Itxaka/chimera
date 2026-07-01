@@ -1,0 +1,61 @@
+name: Release
+
+# Build a release binary and publish it as a GitHub Release whenever a version
+# tag (v*) is pushed, e.g. `git tag v0.1.0 && git push origin v0.1.0`.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: build + publish (x86_64-linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            libvte-2.91-gtk4-dev \
+            build-essential \
+            pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Builds chimera-gui; its build.rs compiles chimera-netd (release) and
+      # embeds it, so the single `chimera` binary is fully self-contained.
+      - name: Build release binary
+        run: cargo build --release -p chimera-gui
+
+      - name: Package
+        id: package
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          dist="chimera-${tag}-x86_64-linux"
+          mkdir -p "$dist"
+          cp target/release/chimera "$dist/"
+          cp packaging/org.chimera.netd.policy "$dist/"
+          cp README.md "$dist/"
+          tar czf "${dist}.tar.gz" "$dist"
+          sha256sum "${dist}.tar.gz" > "${dist}.tar.gz.sha256"
+          echo "artifact=${dist}.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            ${{ steps.package.outputs.artifact }}
+            ${{ steps.package.outputs.artifact }}.sha256

@@ -9,20 +9,22 @@
 </p>
 
 <p align="center">
-  Native GTK4 + libadwaita UI · detached per-VM processes · tap/bridge networking via a polkit-gated helper · interactive serial console
+  Native GTK4 + libadwaita UI · detached per-VM processes · self-contained NAT networking via a polkit-gated helper · live per-VM metrics · interactive serial console
 </p>
 
 ---
 
 ## What it does
 
-- **Dashboard** — lists every VM with live status (creating / running / paused / stopped / failed), vCPU and memory, polled every 3s. Failed VMs show their error inline.
-- **Create wizard** — name, vCPUs, memory, bootable disk image, firmware path, and bridge, with validation.
-- **Lifecycle** — start, stop (graceful → power-button → kill), pause/resume, delete.
-- **Detached VMs** — each VM is its own `cloud-hypervisor` process that survives closing the app; on relaunch Chimera reconciles its store against the live processes and reconnects.
-- **VM detail page** — full definition + runtime (pid, socket, tap) and per-VM actions.
-- **Interactive serial console** — each VM's serial output is captured from boot to a durable log; an in-app VTE terminal streams it live and lets you type into the guest.
-- **Privilege isolation** — the app runs unprivileged; *all* network mutation happens in a separate `chimera-netd` helper, gated by polkit.
+- **Dashboard** — lists every VM with live status (creating / running / paused / stopped / failed), vCPU and memory. Running VMs show **live CPU/mem sparklines** (refreshed every 5s). Failed VMs show their error inline. Row actions are icon buttons (start/stop/console/delete).
+- **Create wizard** — name, vCPUs, memory, bootable disk image, firmware path, bridge, and optional **cloud-init user-data** (written to a NoCloud seed ISO), with validation.
+- **Lifecycle** — start, stop (graceful → power-button → kill), pause/resume, delete. A single-instance guard never spawns a second `cloud-hypervisor` for the same VM.
+- **Self-contained NAT networking** — the managed bridge is a full NAT network (bridge IP + `ip_forward` + nft/iptables masquerade + a dnsmasq DHCP/DNS server), like libvirt's `virbr0`. Guests get an address and internet with no manual setup. Brought up/down with the bridge, all via the polkit-gated helper.
+- **Detached VMs** — each VM is its own `cloud-hypervisor` process that survives closing the app; on relaunch Chimera reconciles its store against the live processes (probing the pidfile) and reconnects.
+- **VM detail page** — full definition + runtime, live metrics, **snapshots** (take/list/restore/delete), and **hotplug** (vCPU/memory resize, add-disk).
+- **Interactive serial console** — each VM's serial output is captured from boot to a durable log; each console opens in **its own window** (titled by VM name — open several at once) with a VTE terminal that streams live, supports **copy/paste** (Ctrl+Shift+C/V, mouse selection), and sends typing to the guest.
+- **Privilege isolation** — the app runs unprivileged; *all* network mutation (tap, bridge, NAT) happens in a separate `chimera-netd` helper, gated by polkit. `install-nethelper` also installs a passwordless rule so routine tap creation doesn't prompt on every launch.
+- **Logging** — actions, errors, and cloud-hypervisor's own output are captured to `~/.local/state/chimera/chimera.log` (`chimera doctor` prints the path).
 
 ### Screenshots
 
@@ -82,7 +84,8 @@ Design and implementation notes live in [`docs/superpowers/`](docs/superpowers/)
 - Rust (stable)
 - `cloud-hypervisor` on `PATH`
 - `/dev/kvm` accessible to your user (add yourself to the `kvm` group)
-- `pkexec` (polkit) and `ip` (iproute2)
+- `pkexec` (polkit), `ip` (iproute2), and `nft` (nftables) or `iptables` — for NAT
+- `dnsmasq` — DHCP/DNS for the NAT network (`chimera doctor` reports if it's missing)
 - GTK stack: `gtk4`, `libadwaita`, `vte4` (the `-dev` packages to build: `libgtk-4-dev libadwaita-1-dev libvte-2.91-gtk4-dev`)
 
 ## Quick start
@@ -93,11 +96,11 @@ Build and set up the app (network helper and bridge) in one go:
 cargo build --release -p chimera-gui
 ./target/release/chimera doctor            # check prerequisites
 ./target/release/chimera install-nethelper # install the network helper (asks for auth)
-./target/release/chimera setup-bridge chibr0 --persistent
+./target/release/chimera setup-bridge chibr0 --persistent  # bridge + NAT (IP, dnsmasq, masquerade)
 ./target/release/chimera                   # launch the GUI
 ```
 
-All three setup steps are also available from the GUI: **⋮ menu → Install network helper / Create bridge…**, and **Preferences** for defaults.
+All three setup steps are also available from the GUI: **⋮ menu → Install network helper / Manage bridge…**, and **Preferences** for defaults.
 
 ## Run (development)
 
@@ -122,11 +125,32 @@ sudo install -m 0644 packaging/org.chimera.netd.policy /usr/share/polkit-1/actio
 
 The `exec.path` in the policy must match the installed binary path (`/usr/libexec/chimera-netd`).
 
+## Networking
+
+The managed bridge is a NAT network (a clone of libvirt's default `virbr0`):
+
+- Subnet `192.168.100.0/24`, gateway `192.168.100.1`, DHCP range `.2`–`.254`.
+- `setup-bridge` (or **Manage bridge…** in the GUI) assigns the gateway IP,
+  enables IPv4 forwarding, adds a masquerade rule (nftables table `chimera_nat`,
+  or iptables), and starts a `dnsmasq` bound to the bridge. Removing the bridge
+  tears all of it down.
+- Guests get an address and internet automatically **if the guest image runs a
+  DHCP client** (cloud images do). A serial console is *not* a substitute for a
+  network — a bare image with no DHCP client won't lease an address.
+
+`chimera doctor` reports `/dev/kvm`, `cloud-hypervisor`, the helper + policy,
+`dnsmasq`, and whether IPv4 forwarding is enabled.
+
 ## Using the serial console
 
-Open a VM's detail page and click **Console**. The terminal shows the last few
-KB of output for context, then streams live; typing is sent to the guest. The
-full history is always written to a log file:
+Click the **console** icon on a running VM's row (or **Console** on its detail
+page). Each console opens in its own window titled by the VM name, so you can
+have several open at once. The terminal shows the captured backlog, then streams
+live; typing is sent to the guest. Copy/paste with **Ctrl+Shift+C / Ctrl+Shift+V**
+or the mouse (drag to select, middle-click to paste). It's a *serial* console,
+so the guest controls its own width (usually 80 columns) — there's no
+SSH-style window-resize signalling over serial. The full history is always
+written to a log file:
 
 ```
 ~/.local/state/chimera/console/<id>.log     # capped at 5 MB, one rotation to <id>.log.1
@@ -164,19 +188,35 @@ See [`tests/e2e/README.md`](tests/e2e/README.md) for details. CI
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs `fmt`, `clippy`,
 and the unit tests on every push and PR; the gated e2e tests are skipped there.
 
+## Releases
+
+Pushing a version tag builds and publishes a GitHub Release with a
+self-contained `chimera` binary (the `chimera-netd` helper is embedded):
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0   # triggers .github/workflows/release.yml
+```
+
+The release asset is `chimera-<tag>-x86_64-linux.tar.gz` (binary + polkit policy
++ README, with a `.sha256`). After extracting, run `./chimera install-nethelper`
+once to set up the privileged helper.
+
 ## Project status
 
-Implemented end-to-end: VM lifecycle, detached VMs + reconnect, tap+bridge
-networking, VM detail page, inline error reporting, interactive serial console,
-**live metrics (host CPU%/RSS)**, **snapshots (take/list/restore/delete)**,
-**hotplug (vCPU/memory resize + add-disk)**, self-contained setup
-(`install-nethelper`, `setup-bridge`, embedded helper), app chrome
-(menu/About/Preferences), an e2e test framework, and CI. Boot model is
-firmware/UEFI from a bootable disk image.
+Implemented end-to-end: VM lifecycle (single-instance guarded), detached VMs +
+reconnect, **self-contained NAT networking** (bridge IP + dnsmasq + masquerade),
+**cloud-init** (NoCloud seed ISO), VM detail page, inline error reporting,
+**per-window interactive serial console with copy/paste**, **live metrics
+sparklines (host CPU%/RSS)**, **snapshots**, **hotplug (vCPU/memory resize +
+add-disk)**, self-contained setup (`install-nethelper` + passwordless rule,
+`setup-bridge`, embedded helper), file logging (incl. ch output), app chrome
+(menu/About/Preferences), an e2e test framework, CI, and a release workflow.
+Boot model is firmware/UEFI from a bootable disk image.
 
-**Roadmap:** device remove + add-net hotplug · persistent bridge polish ·
-passt unprivileged networking · cloud-init / templates · multi-host · live
-migration · packaging (.desktop + icon).
+**Roadmap:** cloud-init auto-DHCP network-config · SSH console (real resize) ·
+device remove + add-net hotplug · passt unprivileged networking · templates ·
+multi-host · live migration · packaging (.desktop + icon).
 
 ## License
 
