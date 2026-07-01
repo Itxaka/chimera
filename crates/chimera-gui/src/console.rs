@@ -106,12 +106,28 @@ impl Component for Console {
             let hub = hub.clone();
             let id = id.clone();
             crate::runtime::rt().spawn(async move {
-                let tail = hub.tail(&id, 4096).await;
+                // Subscribe FIRST, retrying briefly: on a just-started VM the
+                // console can open before the hub has attached the session, and
+                // if we gave up here the terminal would stay blank forever
+                // (reopening "worked" only because the session existed by then).
+                // Subscribing before reading the tail also means no bytes are
+                // lost in the gap between the tail read and the live stream.
+                let mut sub = None;
+                for _ in 0..50 {
+                    if let Some(s) = hub.subscribe(&id).await {
+                        sub = Some(s);
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+                // Backlog from the capped log so an early-opened console still
+                // shows the boot output already captured.
+                let tail = hub.tail(&id, 65536).await;
                 if !tail.is_empty() {
                     let _ = tx.send(tail).await;
                 }
-                if let Some(mut sub) = hub.subscribe(&id).await {
-                    loop {
+                match sub {
+                    Some(mut sub) => loop {
                         match sub.recv().await {
                             Ok(bytes) => {
                                 if tx.send(bytes).await.is_err() {
@@ -121,6 +137,11 @@ impl Component for Console {
                             Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                             Err(_) => break,
                         }
+                    },
+                    None => {
+                        let _ = tx
+                            .send(b"[console: no active session for this VM]\r\n".to_vec())
+                            .await;
                     }
                 }
                 // tx drops here when the task ends/aborts -> the feed loop's rx closes.
