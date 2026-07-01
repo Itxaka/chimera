@@ -28,8 +28,6 @@ pub fn sparkline_points(samples: &[f64], max: f64, w: f64, h: f64) -> Vec<(f64, 
 }
 
 /// Push `v`, evicting the oldest element once `cap` is exceeded (order kept).
-/// Used by vm_row in a later task.
-#[allow(dead_code)]
 pub fn push_capped<T>(buf: &mut std::collections::VecDeque<T>, v: T, cap: usize) {
     buf.push_back(v);
     while buf.len() > cap {
@@ -38,7 +36,6 @@ pub fn push_capped<T>(buf: &mut std::collections::VecDeque<T>, v: T, cap: usize)
 }
 
 /// Stroke a sparkline for `samples` (scaled to `max`) onto `ctx`.
-#[allow(dead_code)]
 pub fn draw_sparkline(
     ctx: &gtk::cairo::Context,
     w: i32,
@@ -83,7 +80,7 @@ mod tests {
     fn points_clamp_and_handle_degenerate() {
         assert!(sparkline_points(&[], 100.0, 100.0, 20.0).is_empty());
         assert!(sparkline_points(&[1.0], 0.0, 100.0, 20.0).is_empty()); // max<=0
-        // over-max clamps to top (y=0), never negative
+                                                                        // over-max clamps to top (y=0), never negative
         let p = sparkline_points(&[200.0], 100.0, 50.0, 20.0);
         assert_eq!(p.len(), 1);
         assert!(p[0].1 >= 0.0 && p[0].1 <= 20.0);

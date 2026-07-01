@@ -1,15 +1,21 @@
+use crate::metrics_ui::push_capped;
 use crate::runtime::rt;
 use crate::settings::Settings;
-use crate::vm_row::{VmAction, VmRow, VmRowOut};
+use crate::vm_row::{VmAction, VmRow, VmRowMsg, VmRowOut};
 use adw::prelude::*;
 use chimera_core::console::ConsoleHub;
 use chimera_core::manager::{Manager, VmView};
+use chimera_core::metrics::VmMetrics;
 use chimera_core::net_client::NetClient;
 use chimera_core::store::Store;
 use chimera_core::supervisor::Supervisor;
 use relm4::factory::FactoryVecDeque;
 use relm4::{adw, gtk, Component, ComponentParts, ComponentSender, RelmWidgetExt};
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
+
+const METRICS_SECS: u64 = 5;
+const HISTORY_CAP: usize = 24;
 
 pub fn make_manager(ch_binary: &str) -> Manager {
     Manager::new(
@@ -28,6 +34,12 @@ fn serial_path(id: &str) -> std::path::PathBuf {
 }
 
 #[derive(Debug)]
+pub enum DashCmd {
+    List(Vec<VmView>),
+    Metrics(Vec<(String, VmMetrics)>),
+}
+
+#[derive(Debug)]
 pub enum DashboardMsg {
     Refresh,
     Loaded(Vec<VmView>),
@@ -40,6 +52,8 @@ pub enum DashboardMsg {
     /// Directly set the install-banner revealed state (used from app.rs after
     /// a menu-triggered install/uninstall).
     SetBannerRevealed(bool),
+    MetricsTick,
+    MetricsLoaded(Vec<(String, VmMetrics)>),
 }
 
 #[derive(Debug)]
@@ -59,6 +73,39 @@ pub struct Dashboard {
     #[allow(dead_code)]
     poll_secs: u64,
     banner: adw::Banner,
+    metrics_mgr: Arc<Manager>,
+    history: HashMap<String, VecDeque<VmMetrics>>,
+    running_ids: Vec<String>,
+}
+
+impl Dashboard {
+    /// Send each running row its metric series from the history map so the
+    /// sparklines persist across the poll-driven row rebuild.
+    fn push_history_to_rows(&self) {
+        for (idx, row) in self.rows.iter().enumerate() {
+            let id = &row.view.definition.id;
+            if let Some(buf) = self.history.get(id) {
+                let cpu: Vec<f64> = buf.iter().map(|m| m.cpu_pct as f64).collect();
+                let mem: Vec<f64> = buf
+                    .iter()
+                    .map(|m| (m.rss_bytes / (1024 * 1024)) as f64)
+                    .collect();
+                let (cur_cpu, cur_mem_mib) = buf
+                    .back()
+                    .map(|m| (m.cpu_pct, m.rss_bytes / (1024 * 1024)))
+                    .unwrap_or((0.0, 0));
+                self.rows.send(
+                    idx,
+                    VmRowMsg::Metrics {
+                        cpu,
+                        mem,
+                        cur_cpu,
+                        cur_mem_mib,
+                    },
+                );
+            }
+        }
+    }
 }
 
 /// Init payload: the ConsoleHub plus the loaded Settings.
@@ -69,7 +116,7 @@ impl Component for Dashboard {
     type Init = DashboardInit;
     type Input = DashboardMsg;
     type Output = DashboardOut;
-    type CommandOutput = Vec<VmView>;
+    type CommandOutput = DashCmd;
 
     view! {
         gtk::Box {
@@ -121,12 +168,17 @@ impl Component for Dashboard {
         header_box.append(&label);
         header_box.append(&new_btn);
 
+        let metrics_mgr = Arc::new(make_manager(&settings.ch_binary));
+
         let model = Dashboard {
             hub,
             rows,
             ch_binary: settings.ch_binary.clone(),
             poll_secs: settings.poll_secs,
             banner,
+            metrics_mgr,
+            history: HashMap::new(),
+            running_ids: Vec::new(),
         };
 
         let row_box = model.rows.widget();
@@ -165,6 +217,15 @@ impl Component for Dashboard {
             }
         });
 
+        // Metrics loop: every METRICS_SECS ask for fresh samples of running VMs.
+        let sm = sender.clone();
+        relm4::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(METRICS_SECS)).await;
+                sm.input(DashboardMsg::MetricsTick);
+            }
+        });
+
         ComponentParts { model, widgets }
     }
 
@@ -173,19 +234,57 @@ impl Component for Dashboard {
             DashboardMsg::Refresh => {
                 let ch_binary = self.ch_binary.clone();
                 sender.oneshot_command(async move {
-                    rt().spawn(
-                        async move { make_manager(&ch_binary).list().await.unwrap_or_default() },
-                    )
-                    .await
-                    .unwrap_or_default()
+                    let list =
+                        rt().spawn(async move {
+                            make_manager(&ch_binary).list().await.unwrap_or_default()
+                        })
+                        .await
+                        .unwrap_or_default();
+                    DashCmd::List(list)
                 });
             }
             DashboardMsg::Loaded(views) => {
+                self.running_ids = views
+                    .iter()
+                    .filter(|v| v.runtime.status == chimera_core::model::VmStatus::Running)
+                    .map(|v| v.definition.id.clone())
+                    .collect();
                 let mut guard = self.rows.guard();
                 guard.clear();
                 for v in views {
                     guard.push_back(v);
                 }
+                drop(guard);
+                self.push_history_to_rows();
+            }
+            DashboardMsg::MetricsTick => {
+                let mgr = self.metrics_mgr.clone();
+                let ids = self.running_ids.clone();
+                sender.oneshot_command(async move {
+                    let pairs = rt()
+                        .spawn(async move {
+                            let mut out: Vec<(String, VmMetrics)> = Vec::new();
+                            for id in ids {
+                                if let Some(m) = mgr.metrics(&id).await {
+                                    out.push((id, m));
+                                }
+                            }
+                            out
+                        })
+                        .await
+                        .unwrap_or_default();
+                    DashCmd::Metrics(pairs)
+                });
+            }
+            DashboardMsg::MetricsLoaded(pairs) => {
+                let live: std::collections::HashSet<String> =
+                    pairs.iter().map(|(id, _)| id.clone()).collect();
+                self.history.retain(|id, _| live.contains(id));
+                for (id, m) in pairs {
+                    let buf = self.history.entry(id.clone()).or_default();
+                    push_capped(buf, m, HISTORY_CAP);
+                }
+                self.push_history_to_rows();
             }
             DashboardMsg::Act(action, id) => {
                 let s = sender.clone();
@@ -290,10 +389,13 @@ impl Component for Dashboard {
 
     fn update_cmd(
         &mut self,
-        views: Self::CommandOutput,
+        out: Self::CommandOutput,
         sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
-        sender.input(DashboardMsg::Loaded(views));
+        match out {
+            DashCmd::List(views) => sender.input(DashboardMsg::Loaded(views)),
+            DashCmd::Metrics(pairs) => sender.input(DashboardMsg::MetricsLoaded(pairs)),
+        }
     }
 }
