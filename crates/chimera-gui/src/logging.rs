@@ -28,7 +28,11 @@ pub fn init() -> tracing_appender::non_blocking::WorkerGuard {
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
     tracing_subscriber::registry()
         .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_writer(nb).with_ansi(false))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(nb)
+                .with_ansi(false),
+        )
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .init();
     guard

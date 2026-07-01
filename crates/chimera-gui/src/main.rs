@@ -1,10 +1,10 @@
 mod app;
 mod console;
-mod logging;
 mod create_dialog;
 mod dashboard;
 mod detail;
 mod helpers;
+mod logging;
 mod prefs;
 mod runtime;
 mod settings;
