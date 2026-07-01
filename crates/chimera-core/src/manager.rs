@@ -34,6 +34,27 @@ pub fn derive_status(pid_alive: bool, ping_ok: bool) -> VmStatus {
     }
 }
 
+/// What `create` should do about a VM that already has a recorded pid, so it
+/// never spawns a second cloud-hypervisor for the same VM (which orphans the
+/// old one — the pidfile only tracks the latest pid).
+#[derive(Debug, PartialEq, Eq)]
+pub enum PreCreate {
+    /// Prior pid is alive and responds — no-op, return the existing view.
+    AlreadyRunning,
+    /// Prior pid is alive but unresponsive (orphan) — kill it, then spawn fresh.
+    ReplaceStale,
+    /// No live prior process — spawn fresh.
+    Fresh,
+}
+
+pub fn precreate_action(has_pid: bool, pid_alive: bool, ping_ok: bool) -> PreCreate {
+    match (has_pid, pid_alive, ping_ok) {
+        (true, true, true) => PreCreate::AlreadyRunning,
+        (true, true, false) => PreCreate::ReplaceStale,
+        _ => PreCreate::Fresh,
+    }
+}
+
 pub struct Manager {
     store: Store,
     supervisor: Supervisor,
@@ -69,7 +90,42 @@ impl Manager {
     pub async fn create(&self, def: VmDefinition) -> Result<VmView, ManagerError> {
         let id = def.id.clone();
         tracing::info!(target: "chimera::manager", id = %id, "creating vm");
+
+        // Single-instance guard: a VM's pidfile only tracks the latest pid, so
+        // spawning again while an old ch is alive orphans it (and can tear the
+        // tap out from under a running guest). Never spawn a second instance:
+        // if the prior process is alive and responsive, this is a no-op; if it
+        // is alive but unresponsive, reap it before spawning fresh.
+        if let Some(pid) = self.supervisor.read_pid(&id) {
+            let alive = self.supervisor.is_alive(pid);
+            let ping_ok = alive && self.client_for(&id).ping().await.is_ok();
+            match precreate_action(true, alive, ping_ok) {
+                PreCreate::AlreadyRunning => {
+                    tracing::info!(target: "chimera::manager", id = %id, pid, "create: already running, no-op");
+                    if let Ok(rt) = self.store.load_runtime(&id) {
+                        return Ok(VmView {
+                            definition: def,
+                            runtime: rt,
+                        });
+                    }
+                    // Runtime record missing despite a live+responsive process:
+                    // fall through and rebuild it below.
+                }
+                PreCreate::ReplaceStale => {
+                    tracing::warn!(target: "chimera::manager", id = %id, pid, "create: reaping unresponsive prior ch before respawn");
+                    let _ = self.supervisor.kill(pid);
+                }
+                PreCreate::Fresh => {}
+            }
+        }
+
         let tap = crate::net_client::alloc_tap_name(&id);
+        // Clear any stale tap left by a crashed/replaced run so create_tap is
+        // fresh (create_tap fails if the tap already exists).
+        if std::path::Path::new(&format!("/sys/class/net/{tap}")).exists() {
+            tracing::warn!(target: "chimera::manager", id = %id, tap = %tap, "removing stale tap before create");
+            let _ = self.net.delete_tap(&tap);
+        }
         let socket = self.supervisor.socket_path(&id);
 
         // 1. persist desired config first
@@ -406,5 +462,25 @@ mod tests {
     #[test]
     fn derive_status_failed_when_alive_but_unreachable() {
         assert_eq!(derive_status(true, false), VmStatus::Failed);
+    }
+
+    #[test]
+    fn precreate_noop_when_alive_and_responsive() {
+        assert_eq!(
+            precreate_action(true, true, true),
+            PreCreate::AlreadyRunning
+        );
+    }
+
+    #[test]
+    fn precreate_replaces_alive_but_unresponsive_orphan() {
+        assert_eq!(precreate_action(true, true, false), PreCreate::ReplaceStale);
+    }
+
+    #[test]
+    fn precreate_fresh_when_no_pid_or_dead() {
+        assert_eq!(precreate_action(false, false, false), PreCreate::Fresh);
+        // dead pid (recorded but not alive) -> fresh spawn
+        assert_eq!(precreate_action(true, false, false), PreCreate::Fresh);
     }
 }
