@@ -11,8 +11,8 @@ path = "src/main.rs"
 chimera-core = { path = "../chimera-core" }
 tokio = { workspace = true }
 relm4 = { version = "0.11", features = ["libadwaita"] }
-gtk = { package = "gtk4", version = "0.11", features = ["v4_22"] }
-adw = { package = "libadwaita", version = "0.9", features = ["v1_9"] }
+gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
+adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
 vte = { package = "vte4", version = "0.10" }
 async-channel = "2"
 serde = { workspace = true }
